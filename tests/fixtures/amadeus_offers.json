@@ -1,0 +1,26 @@
+{
+  "meta": {"count": 3},
+  "data": [
+    {
+      "type": "flight-offer",
+      "id": "1",
+      "validatingAirlineCodes": ["AI"],
+      "price": {"currency": "INR", "total": "48250.00", "grandTotal": "48250.00"},
+      "itineraries": [{"duration": "PT9H35M"}]
+    },
+    {
+      "type": "flight-offer",
+      "id": "2",
+      "validatingAirlineCodes": ["EK"],
+      "price": {"currency": "INR", "total": "51900.00", "grandTotal": "52400.00"},
+      "itineraries": [{"duration": "PT14H10M"}]
+    },
+    {
+      "type": "flight-offer",
+      "id": "3",
+      "validatingAirlineCodes": [],
+      "price": {"currency": "INR", "total": "61000.00"},
+      "itineraries": [{"duration": "PT16H45M"}]
+    }
+  ]
+}

@@ -13,48 +13,78 @@ import json
 import sys
 
 from . import engine
-from .knowledge import SNAPSHOT_DATE
-from .models import Cabin, Card, Flexibility, MarketRegime, Plan, Traveller, Trip
+from . import tactics as tactics_mod
+from .knowledge import (
+    DEFAULT_POINT_REALIZATION_RATE,
+    HDFC_SMARTBUY_MONTHLY_POINTS_CAP,
+    SNAPSHOT_DATE,
+)
+from .models import (
+    Cabin,
+    Card,
+    Flexibility,
+    MarketRegime,
+    Plan,
+    RewardProgramme,
+    Traveller,
+    Trip,
+)
+
+#: Reward programmes, stated as the chain the engine actually models:
+#: points earned -> monthly cap -> rupee value -> realisation haircut.
+#:
+#: HDFC Infinia earns ~3.3 RP per 100 INR base; SmartBuy applies a 5x
+#: accelerator on flights, so 16.5 RP per 100 -- which is where the old
+#: model's bogus "16.5% value back" came from. Two things cut it down:
+#:
+#:   point_value_inr   1.0 is the headline SmartBuy rate, achieved only on
+#:                     the right redemption.
+#:   realization_rate  deliberately lower than the default here, because the
+#:                     Feb 2026 rules cap *redemptions* at 50,000 points
+#:                     across 5 transactions per month. A large accrual
+#:                     cannot all be redeemed at the good rate promptly, so
+#:                     accelerated points realise worse than base points do.
+_HDFC_PREMIUM = RewardProgramme(
+    base_points_per_100=3.3,
+    point_value_inr=1.0,
+    realization_rate=0.45,
+    portal_multiplier=5.0,
+    monthly_points_cap=HDFC_SMARTBUY_MONTHLY_POINTS_CAP,
+)
 
 #: A few real cards, described by the properties the engine actually uses.
 CARD_CATALOGUE: dict[str, Card] = {
     "infinia": Card(
         name="HDFC Infinia",
         forex_markup_pct=2.0,
-        travel_reward_pct=3.3,
-        portal_multiplier=5.0,
+        programme=_HDFC_PREMIUM,
         transfer_partners=("KrisFlyer", "Executive Club", "Miles&Smiles"),
     ),
     "diners-black": Card(
         name="HDFC Diners Club Black",
         forex_markup_pct=2.0,
-        travel_reward_pct=3.3,
-        portal_multiplier=5.0,
+        programme=_HDFC_PREMIUM,
         transfer_partners=("KrisFlyer", "Executive Club"),
     ),
     "scapia": Card(
         name="Federal Bank Scapia",
         forex_markup_pct=0.0,
-        travel_reward_pct=2.0,
-        portal_multiplier=1.0,
+        programme=RewardProgramme(base_points_per_100=2.0, point_value_inr=1.0),
     ),
     "idfc-wow": Card(
         name="IDFC FIRST WoW",
         forex_markup_pct=0.0,
-        travel_reward_pct=1.0,
-        portal_multiplier=1.0,
+        programme=RewardProgramme(base_points_per_100=1.0, point_value_inr=1.0),
     ),
     "mayura": Card(
         name="IDFC FIRST Mayura",
         forex_markup_pct=0.0,
-        travel_reward_pct=2.5,
-        portal_multiplier=1.0,
+        programme=RewardProgramme(base_points_per_100=2.5, point_value_inr=1.0),
     ),
     "magnus-burgundy": Card(
         name="Axis Magnus for Burgundy",
         forex_markup_pct=2.0,
-        travel_reward_pct=2.4,
-        portal_multiplier=1.0,
+        programme=RewardProgramme(base_points_per_100=2.4, point_value_inr=1.0),
         transfer_partners=("KrisFlyer", "Flying Blue"),
     ),
 }
@@ -141,7 +171,7 @@ def _rule(title: str, width: int = 72) -> str:
 
 def render(plan: Plan) -> str:
     t = plan.trip
-    fare = t.observed_fare or t.baseline_fare
+    fare = t.reference_fare
     lines: list[str] = []
 
     lines.append(f"{t.origin.upper()} -> {t.destination.upper()}"
@@ -153,6 +183,8 @@ def render(plan: Plan) -> str:
     lines.append(_rule("TIMING"))
     lines.append(f"Verdict: {plan.urgency.value.replace('_', ' ').upper()}")
     lines.append(plan.timing_note)
+    if plan.season_note:
+        lines.append(f"Season: {plan.season_note}")
     if plan.trigger_price_inr is not None:
         lines.append(
             f"Trigger price: book without deliberation at or below "
@@ -167,34 +199,47 @@ def render(plan: Plan) -> str:
     if not plan.headline_tactics:
         lines.append("No tactics unlocked. Add flexibility or traveller detail.")
     for i, tactic in enumerate(plan.headline_tactics, 1):
-        saving = tactic.saving_inr(fare)
-        money = f"  ~{saving:,.0f} INR" if saving else ""
+        saving = tactic.saving(fare)
+        money = f"  ~{saving} INR" if saving else ""
+        group = f" ({tactic.exclusivity_group}-exclusive)" if tactic.exclusivity_group else ""
         lines.append(
-            f"{i}. {tactic.title}  "
+            f"{i}. {tactic.title}{group}  "
             f"[EV {tactic.expected_value_pct * 100:.1f}%{money}]"
         )
         lines.append(f"   {tactic.detail}")
         for risk in tactic.risks:
             lines.append(f"   ! {risk}")
 
+    portfolio = tactics_mod.portfolio_estimate(plan.tactics, fare)
+    if portfolio is not None:
+        lines.append(
+            f"\nCombined realistic saving: {portfolio} INR. Tactics sharing an "
+            f"exclusivity group count only once -- one ticket, one channel."
+        )
+
     lines.append(_rule("OPTIONALITY"))
     for opt in plan.options:
         verdict = "BUY" if opt.recommended else "SKIP"
         lines.append(f"[{verdict}] {opt.instrument} -- cost {opt.cost_inr:,.0f} INR, "
-                     f"value {opt.expected_value_inr:,.0f} INR")
+                     f"value {opt.expected_value} INR")
         lines.append(f"   {opt.rationale}")
 
     if plan.payment:
+        pay = plan.payment
         lines.append(_rule("PAYMENT"))
-        lines.append(f"Channel: {plan.payment.channel.value}")
-        for step in plan.payment.steps:
+        lines.append(f"Channel: {pay.channel.value}")
+        for step in pay.steps:
             lines.append(f" - {step}")
-        if plan.payment.gross_discount_inr:
-            lines.append(
-                f"Gross value {plan.payment.gross_discount_inr:,.0f} INR; "
-                f"net of forfeited options {plan.payment.net_discount_inr:,.0f} INR."
-            )
-        for note in plan.payment.notes:
+        lines.append("")
+        lines.append("  Value, kept separate because the units differ:")
+        lines.append(f"    cash off fare      {pay.cash_off_inr:>12,.0f} INR   (money)")
+        lines.append(f"    points earned      {pay.points_value_inr:>12,.0f} INR   "
+                     f"(speculative -- depends on redeeming well)")
+        net_option = pay.option_value_inr - pay.forfeited_option_inr
+        lines.append(f"    option value       {net_option:>12,.0f} INR   "
+                     f"(not money -- the worth of keeping a choice)")
+        lines.append("  These are deliberately not summed into one figure.")
+        for note in pay.notes:
             lines.append(f"   . {note}")
 
     lines.append(_rule("YOUR RIGHTS ON THIS BOOKING"))

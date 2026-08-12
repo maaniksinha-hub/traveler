@@ -3,15 +3,12 @@
 A decision engine for booking flights cheaply, from and to India.
 
 **This is decision support, not a booking bot.** It holds no airline
-credentials, calls no fare APIs, and books nothing. It takes a description of
-a trip and emits a ranked, costed strategy that a human executes. Anything
-claiming to automatically book the cheapest fare would need live GDS access
-and would still be wrong most of the time — the honest artefact is a model
-that tells you *which levers apply to this trip and what each is worth*.
+credentials, books nothing, and makes no reservations. It takes a description
+of a trip and emits a ranked, costed strategy that a human executes.
 
 ## Install and run
 
-Pure standard library; Python 3.10+. No dependencies to install.
+The core engine is pure standard library, Python 3.10+.
 
 ```bash
 python3 -m traveler --from BLR --to LHR \
@@ -24,101 +21,214 @@ python3 -m traveler --from BLR --to LHR \
 Add `--json` for machine-readable output.
 
 ```bash
-python3 -m pytest tests/ -q     # 45 tests
+python3 -m pytest tests/ -q          # 145 tests
+pip install -e ".[calibrate]"        # numpy/scipy/requests, calibration only
 ```
 
-## What it actually computes
+---
 
-Five models, each in its own module, composed by `engine.plan_trip`.
+## How much to trust the output
 
-### 1. Timing (`timing.py`)
+This matters more than the feature list, so it comes first. The engine's
+inputs fall into three tiers, and it is honest about which is which — every
+plan prints its model provenance.
 
-Expected fare as a multiple of the trough price, as a function of
-days-before-departure: an early plateau, a trough (the booking window), then a
-steep last-minute cliff. Produces a **band and an urgency signal**, not a
-"best day to book" — the published studies contradict each other, and that
-disagreement is itself the finding.
+### 🟢 Sourced facts
 
-`MarketRegime` is a parameter, not a constant. It defaults to `RISING` to
-reflect the 2026 ATF shock, which shifts the whole window earlier: when the
-drift is upward, waiting costs more than it saves. Set it to `stable` or
-`falling` when conditions change rather than editing the curve.
+DGCA look-in window (48h, ≥7d domestic / ≥15d international, airline-direct
+only), DGCA refund timelines, US DOT significant-change thresholds (3h/6h),
+IndiGo 6E Fare Hold pricing, UDAN fare cap, consolidator discount ranges,
+self-transfer buffers, bank offer caps. All carry a `SNAPSHOT_DATE` in
+`knowledge.py` and can be re-verified.
 
-### 2. Optionality (`options.py`)
+### 🟡 Direction right, precision is judgment
+
+Booking windows and tactic priors. The published studies genuinely
+contradict each other, so the boundaries are centres of mass. **Trust the
+ordering of tactics; treat the magnitudes as rough.**
+
+### 🔴 Hand-authored, unvalidated
+
+The price-multiplier curve shape, volatility decay, option haircuts, the
+seasonality multipliers. These are plausible, internally consistent, and
+**not derived from data**. That is what `traveler.calibration` exists to fix.
+
+Until `fit` has run against real observations, the engine reports
+`provenance: hand-authored priors (uncalibrated)` on every plan, and every
+monetary output is an `Estimate(low, mid, high)` band rather than a point —
+because false precision is how an unvalidated model gets trusted.
+
+---
+
+## What it computes
+
+Six models, composed by `engine.plan_trip`.
+
+### `market.py` — descriptive: what fares *do*
+
+Price multiplier by days-out (early plateau → trough → last-minute cliff),
+volatility, seasonality. Strictly separated from prescription so a fitted
+model can replace the hand-authored one without touching recommendation
+logic. Two implementations behind a `MarketModel` protocol:
+`DefaultMarketModel` (ships) and `FittedMarketModel` (loads calibration
+output, falls back per-route-class where data was thin).
+
+`MarketRegime` is a parameter, not a constant. It defaults to `RISING` for
+the 2026 ATF shock, which shifts the window earlier. Set it to `stable` when
+conditions change rather than editing the curve.
+
+### `seasonality.py` — departure-date demand
+
+Festival and peak calendar (Diwali, Christmas–New Year, summer holidays,
+Durga Puja, Eid) scaled by route sensitivity, since festivals move Indian
+domestic demand far more than long-haul. Overlapping peaks take the maximum
+rather than compounding. **Distinct from the days-out effect** — a December
+24 departure and a February 24 departure at the same lead time are not the
+same booking.
+
+Festival dates are lunar and move. The calendar covers 2026–2028 and says so
+explicitly past that horizon rather than silently returning 1.0.
+
+### `timing.py` — prescriptive: what to do about it
+
+Urgency verdict and trigger price. The trigger is derived from baseline ×
+curve position × season, so the target loosens honestly as departure
+approaches instead of anchoring on an unreachable trough. Peak departures are
+pushed one step more urgent.
+
+### `options.py` — pricing optionality
 
 The central idea. Every booking decision is a trade in options, and most
-travellers give theirs away without pricing them:
+travellers give theirs away unpriced:
 
 | Instrument | What it is | Cost |
 |---|---|---|
-| Fare hold | a call on the fare | ₹99 / ₹199 |
-| DGCA 48h look-in | a free put on the booking | ₹0 (airline-direct only) |
-| Award seat with free redeposit | a free option on the whole trip | ₹0 |
+| Fare hold | a call on the fare | ₹99 / ₹199 per pax |
+| DGCA 48h look-in | a free put on the booking | ₹0, airline-direct only |
+| Award seat, free redeposit | a free option on the trip | ₹0 |
 | Cheap non-refundable fare | you *sold* optionality | you were paid |
 | OTA coupon | you sold the DGCA put | you were paid the coupon |
 
-A fare hold's value is `E[max(0, ΔP)]` — the upward half of the expected move,
-discounted by the chance you actually take the trip. `coupon_versus_lookin`
-resolves the trade travellers get wrong most often: a visible coupon beats an
-invisible option in intuition, frequently not in value.
+A hold's value is `E[max(0, ΔP)]` — the upward half of the expected move,
+discounted by the chance you take the trip. `coupon_versus_lookin` resolves
+the trade travellers get wrong most often.
 
-### 3. Payment stack (`payments.py`)
+### `payments.py` — the stack, with units kept apart
 
-A small constrained optimisation, not a lookup. Bank offers are capped,
-mutually exclusive and day-of-week gated, so the biggest headline percentage
-routinely loses to a smaller uncapped one — 25% capped at ₹3,000 on a
-₹200,000 fare is 1.5%. The optimiser also charges the OTA route for the DGCA
-window it forfeits, so channels compete on net value rather than sticker
-discount. It computes the true cost of "no-cost" EMI (GST on notional
-interest plus processing fee) and picks the right card for foreign
-point-of-sale purchases.
+A constrained optimisation, not a lookup: offers are capped, mutually
+exclusive and day-of-week gated, so the biggest headline routinely loses —
+25% capped at ₹3,000 is **1.6%** on a ₹185,000 fare.
 
-### 4. Tactics (`tactics.py`)
+Three kinds of value are tracked and **never summed into a headline**:
 
-Each lever carries a prior expected saving and a hit probability conditioned
-on the trip, so the output is ranked by expected value rather than being a
-generic checklist. Consolidator fares score *higher* when dates are hard —
-they are the one lever that works without flexibility. Error fares require
-both flexibility and the ability to commit fast, so they simply do not appear
-for a fixed-date booking.
+- **cash off** — money
+- **points value** — speculative, depends on redeeming well
+- **option value** — not money at all
 
-`portfolio_estimate` combines multiplicatively on the remaining fare: you
-cannot stack a consolidator fare, an award and an error fare on one ticket,
-so summing them would be nonsense.
+They combine only inside `comparable_total()`, with explicit weights, purely
+to rank channels. Set `points_weight=0` if you distrust points and the
+ranking changes — which is the point.
 
-### 5. Rights (`rights.py`)
+Points valuation is an explicit chain: `spend → points earned → monthly cap →
+rupee value → realisation haircut`. Collapsing that into one "percent back"
+figure is how an earlier version claimed 16.5% uncapped value-back on an
+HDFC Infinia.
 
-Passenger rights that carry money. The schedule-change lever is the
-underused one: a significant retiming entitles you to free rebooking *or* a
-full refund to original payment, which means booking early carries an
-embedded free option most travellers never exercise. Includes the US DOT
-3h/6h significant-change thresholds when the itinerary touches the US.
+### `tactics.py` — ranked by expected value
 
-## Design notes
+Priors conditioned on the trip: consolidator fares score *higher* when dates
+are hard (the one lever that works without flexibility); error fares do not
+appear at all without both flexibility and the ability to commit fast.
 
-**`knowledge.py` is data, logic lives elsewhere.** Every constant is a fact
-about the world that decays — fare caps, offer percentages, regulatory
-thresholds. It carries a `SNAPSHOT_DATE` and each block cites where it came
-from, so it can be re-verified rather than trusted indefinitely. The engine's
-reasoning does not change when the data does.
+Tactics carry an `exclusivity_group`. One ticket is bought through exactly
+one channel and routed exactly one way, so grouped tactics contribute only
+their best member; ungrouped ones genuinely stack and compose
+multiplicatively.
 
-**Unknown airports fall back to long-haul international.** The conservative
-choice: it widens the booking window and surfaces more checks rather than
-fewer.
+### `rights.py` — protections that carry money
 
-**Absolute numbers come from the user.** There is no live pricing here, so
-`--fare` and `--baseline` are user-supplied and everything monetary is derived
-from them. Without them the engine still runs and gives qualitative guidance,
-and flags that it is doing so.
+The schedule-change lever is the underused one: a significant retiming
+entitles you to free rebooking *or* a full refund to original payment, so
+booking early carries an embedded free option most travellers never exercise.
+
+---
+
+## Calibration
+
+The path from hand-authored to measured:
+
+```
+snapshot  →  store  →  backtest / fit  →  FittedMarketModel
+```
+
+```bash
+# 1. Accumulate observations. No API hands you a back catalogue, so this
+#    only pays off by running daily for months. Put it in cron.
+AMADEUS_CLIENT_ID=... AMADEUS_CLIENT_SECRET=... \
+    python3 -m traveler.calibration.snapshot --watchlist watchlist.json
+
+# 2. Ask whether the strategy actually beats naive baselines.
+python3 -m traveler.calibration.backtest --route DEL-BOM
+
+# 3. Fit the curve once there is enough data.
+python3 -m traveler.calibration.fit --out fitted_market.json
+```
+
+`watchlist.json` is a list of itineraries:
+
+```json
+[{"origin": "DEL", "destination": "BOM", "depart": "2026-12-10"},
+ {"origin": "BLR", "destination": "LHR", "depart": "2026-12-20",
+  "return": "2027-01-05", "cabin": "business"}]
+```
+
+**The backtest is designed to be able to fail.** It compares against
+*book-immediately* and *book at a fixed 45-day lead*, reports losses as
+prominently as wins, and prints `VERDICT: NOT VALIDATED` when a naive
+baseline beats the strategy. Lookahead bias is avoided by estimating the
+baseline only from departures that had already completed at simulated
+decision time — using each departure's own realised minimum would let the
+strategy see the future and make the whole exercise worthless.
+
+`fit` refuses to emit coefficients below 200 observations and 5 distinct
+departures per route class. Many observations of one departure is one data
+point about the booking curve, not five hundred. A confidently wrong fitted
+curve is worse than an honestly uncalibrated one.
+
+Amadeus credentials come from the environment, are never written to the
+store, never logged, and never appear in `repr()` or exception messages.
+
+---
+
+## Testing
+
+145 tests, biased toward **invariants over fixed values**. A test asserting
+the curve bottoms out exactly where it was coded to bottom out is a
+change-detector, not validation. What is asserted instead: monotonicity
+through the cliff, volatility strictly decreasing with lead time, portfolio
+estimates never exceeding the fare, estimate bounds ordered, seasonality
+bounded, the engine never crashing across a swept input space.
+
+Amadeus is tested against recorded fixtures (`tests/fixtures/`) covering
+auth failure, normal offers, empty results, malformed entries and rate
+limiting. Live tests are marked and deselected by default:
+
+```bash
+pytest -m live          # needs real AMADEUS_* credentials
+```
+
+---
 
 ## Limitations
 
-- No live fares. Route classification covers the airports Indian travellers
-  actually use, not all of them.
+- **The market model is uncalibrated as shipped.** Rankings are more reliable
+  than rupee figures until you run `fit`.
 - `OTA_OFFERS` is the *shape* of the market, not a live feed. Bank offers
-  rotate constantly; re-verify before booking.
-- UDAN sector membership cannot be checked offline. The engine flags trips
-  whose *shape* could qualify and tells you to check the operational route
-  list.
-- Tactic priors are conservative point estimates standing in for wide ranges.
-  Treat the ranking as reliable and the rupee figures as indicative.
+  rotate constantly — re-verify before booking.
+- UDAN sector membership cannot be checked offline; the engine flags trips
+  whose *shape* could qualify and tells you to check the operational list.
+- Route classification covers the airports Indian travellers actually use,
+  not all of them. Unknown airports fall back to long-haul international —
+  the conservative choice, since it widens the window.
+- Festival dates need extending past 2028.
+- No live booking, and none is planned. This stays decision support.

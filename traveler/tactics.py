@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from . import routing
 from .knowledge import CATEGORY_FARES, TACTIC_PRIORS, UDAN_FARE_CAP_INR
-from .models import Cabin, Channel, RouteClass, Tactic, Traveller, Trip
+from .models import Estimate, RouteClass, Tactic, Traveller, Trip
+from .models import Channel
 
 
 def _p(key: str) -> float:
@@ -40,6 +41,7 @@ def build(trip: Trip, traveller: Traveller, route_class: RouteClass) -> list[Tac
             expected_saving_pct=_p("consolidator"),
             hit_probability=min(prob, 0.8),
             channel=Channel.CONSOLIDATOR,
+            exclusivity_group="channel",
             risks=(
                 "Verify a 13-digit e-ticket number, not just a PNR.",
                 "Pay by credit card; never bank transfer.",
@@ -63,6 +65,7 @@ def build(trip: Trip, traveller: Traveller, route_class: RouteClass) -> list[Tac
             expected_saving_pct=_p("award_redemption"),
             hit_probability=prob,
             channel=Channel.AWARD,
+            exclusivity_group="channel",
             risks=("Check redeposit rules before booking as a placeholder.",),
         ))
 
@@ -80,6 +83,7 @@ def build(trip: Trip, traveller: Traveller, route_class: RouteClass) -> list[Tac
             expected_saving_pct=_p("error_fare"),
             hit_probability=0.15 * flex.score,
             channel=Channel.AIRLINE_DIRECT,
+            exclusivity_group="channel",
             risks=("The airline may cancel and refund rather than honour it.",),
         ))
 
@@ -110,6 +114,7 @@ def build(trip: Trip, traveller: Traveller, route_class: RouteClass) -> list[Tac
             ),
             expected_saving_pct=_p("split_ticket"),
             hit_probability=0.4,
+            exclusivity_group="routing",
             risks=(
                 "The onward carrier has no obligation if the feeder is late.",
                 "Check transit-visa rules for your passport.",
@@ -128,6 +133,7 @@ def build(trip: Trip, traveller: Traveller, route_class: RouteClass) -> list[Tac
             ),
             expected_saving_pct=_p("positioning"),
             hit_probability=0.35,
+            exclusivity_group="routing",
             risks=("Separate tickets -- same buffer rules as split ticketing.",),
         ))
 
@@ -223,16 +229,34 @@ def build(trip: Trip, traveller: Traveller, route_class: RouteClass) -> list[Tac
     return out
 
 
-def portfolio_estimate(tactics: list[Tactic], fare: float | None) -> float | None:
-    """Combined expected saving, with diminishing returns.
+def portfolio_estimate(tactics: list[Tactic], fare: float | None) -> Estimate | None:
+    """Combined expected saving across tactics that can actually co-exist.
 
-    Tactics overlap -- you cannot stack a consolidator fare, an award and an
-    error fare on one ticket. Combining multiplicatively on the *remaining*
-    fare avoids the nonsense of summing to more than 100%.
+    Tactics inside an exclusivity group are mutually exclusive -- one ticket
+    is bought through exactly one channel, and routed exactly one way -- so
+    the group contributes only its best member. Ungrouped tactics genuinely
+    stack (an open-jaw routing on an off-peak departure), so they compose
+    multiplicatively on the remaining fare.
+
+    The previous uniform 0.6 overlap factor was wrong in both directions: it
+    let three mutually exclusive channel tactics all contribute, while
+    discounting genuinely independent ones.
     """
     if fare is None or not tactics:
         return None
+
+    groups: dict[str, Tactic] = {}
+    independent: list[Tactic] = []
+    for tactic in tactics:
+        if tactic.exclusivity_group is None:
+            independent.append(tactic)
+            continue
+        best = groups.get(tactic.exclusivity_group)
+        if best is None or tactic.expected_value_pct > best.expected_value_pct:
+            groups[tactic.exclusivity_group] = tactic
+
     remaining = 1.0
-    for tactic in sorted(tactics, key=lambda t: t.expected_value_pct, reverse=True):
-        remaining *= (1.0 - tactic.expected_value_pct * 0.6)
-    return round(fare * (1.0 - remaining), 2)
+    for tactic in (*groups.values(), *independent):
+        remaining *= (1.0 - tactic.expected_value_pct)
+
+    return Estimate.around(fare * (1.0 - remaining))

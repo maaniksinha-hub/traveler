@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from .knowledge import AIRPORT_COUNTRY, INDIAN_AIRPORTS, SHORT_HAUL_COUNTRIES
+from .knowledge import (
+    AIRPORT_COUNTRY,
+    INDIAN_AIRPORTS,
+    MAINSTREAM_AIRPORTS,
+    SHORT_HAUL_COUNTRIES,
+)
 from .models import RouteClass, Trip
 
 
@@ -43,14 +48,17 @@ def is_udan_candidate(trip: Trip, route_class: RouteClass) -> bool:
     """Whether the UDAN capped-fare check is worth running.
 
     We cannot verify sector membership offline -- the operational route list
-    changes constantly -- so this returns True for the shape of trip that
+    changes constantly -- so this returns True for the *shape* of trip that
     could qualify and the engine tells the user to check the list.
+
+    The guard requires at least one endpoint outside the mainstream network.
+    An earlier version only excluded metro-to-metro pairs, which wrongly
+    flagged trunk routes like DEL-JAI where both ends carry full-fare service.
     """
     if route_class is not RouteClass.DOMESTIC_INDIA:
         return False
-    # Metro-to-metro trunk routes are never UDAN; regional ones may be.
-    metros = {"DEL", "BOM", "BLR", "MAA", "HYD", "CCU"}
-    return not ({trip.origin.upper(), trip.destination.upper()} <= metros)
+    endpoints = {trip.origin.upper(), trip.destination.upper()}
+    return bool(endpoints - MAINSTREAM_AIRPORTS)
 
 
 def supports_open_jaw(trip: Trip) -> bool:

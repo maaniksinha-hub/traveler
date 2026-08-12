@@ -27,6 +27,17 @@ INDIAN_AIRPORTS: frozenset[str] = frozenset(
     """.split()
 )
 
+#: Airports with mainstream, full-fare scheduled service. UDAN subsidised
+#: sectors connect regional strips, so a route between two of these is never
+#: a UDAN candidate -- which is what stopped DEL-JAI being flagged.
+MAINSTREAM_AIRPORTS: frozenset[str] = frozenset(
+    """
+    DEL BOM BLR MAA HYD CCU COK AMD PNQ GOI GOX JAI LKO IXC TRV NAG IDR
+    BBI GAU PAT VNS SXR ATQ RPR BHO IXR JDH VTZ TIR CJB IXM IXE IXB IXJ
+    IXA IMF SHL DIB TRZ UDR BDQ RAJ STV IXZ IXL DED HBX
+    """.split()
+)
+
 #: Countries reachable as "short haul" from India (< ~5h typical block time).
 SHORT_HAUL_COUNTRIES: frozenset[str] = frozenset(
     {"AE", "OM", "QA", "BH", "KW", "SA", "LK", "NP", "BD", "BT", "MV", "MM",
@@ -46,7 +57,13 @@ AIRPORT_COUNTRY: dict[str, str] = {
     "LHR": "GB", "LGW": "GB", "CDG": "FR", "FRA": "DE", "MUC": "DE",
     "AMS": "NL", "ZRH": "CH", "FCO": "IT", "MAD": "ES", "IST": "TR",
     "JFK": "US", "EWR": "US", "SFO": "US", "ORD": "US", "IAD": "US",
-    "YYZ": "CA", "YVR": "CA", "SYD": "AU", "MEL": "AU", "AKL": "NZ",
+    "LAX": "US", "MIA": "US", "BOS": "US", "SEA": "US", "ATL": "US",
+    "DFW": "US", "PHX": "US", "DEN": "US", "LAS": "US", "MCO": "US",
+    "PHL": "US", "CLT": "US", "DTW": "US", "MSP": "US", "SLC": "US",
+    "AUS": "US", "IAH": "US", "SAN": "US", "TPA": "US", "BWI": "US",
+    "DCA": "US", "RDU": "US", "PDX": "US", "STL": "US", "MCI": "US",
+    "YYZ": "CA", "YVR": "CA", "YUL": "CA", "SYD": "AU", "MEL": "AU",
+    "BNE": "AU", "PER": "AU", "AKL": "NZ",
     "NRT": "JP", "HND": "JP", "ICN": "KR", "HKG": "HK", "PEK": "CN",
     "PVG": "CN", "JNB": "ZA", "NBO": "KE", "CAI": "EG",
 }
@@ -152,6 +169,15 @@ OTA_OFFERS: list[dict[str, object]] = [
 #: Typical Indian card forex markup when the card is not zero-forex.
 DEFAULT_FOREX_MARKUP_PCT = 3.5
 
+#: HDFC SmartBuy monthly accrual ceiling (Feb 2026 rule change raised the
+#: redemption cap to 50,000 points / 5 redemptions per month). Without this
+#: the engine credits unbounded accelerated points on large bookings.
+HDFC_SMARTBUY_MONTHLY_POINTS_CAP = 50_000
+
+#: Fraction of earned points a realistic traveller redeems at the good rate.
+#: 1.0 assumes every point hits the best redemption, which nobody achieves.
+DEFAULT_POINT_REALIZATION_RATE = 0.6
+
 #: Dynamic currency conversion penalty when accepting INR billing abroad.
 DCC_PENALTY_PCT = 5.0
 
@@ -185,6 +211,57 @@ CATEGORY_FARES: dict[str, dict[str, object]] = {
         "typical_pct": 6.0,
         "note": "Ages 60+, auto-applied with Aadhaar on airline sites.",
     },
+}
+
+# --------------------------------------------------------------------------
+# Seasonality
+# --------------------------------------------------------------------------
+# Departure-date demand effects, distinct from the days-out effect. In the
+# Indian market this is plausibly a LARGER signal than booking window, and
+# ignoring it was the biggest gap in the first version of this engine.
+#
+# !! VERIFY AND EXTEND !! Festival dates move year to year on the lunar
+# calendar. The windows below are approximate and cover 2026-2028 only.
+# Past the last year present, season_multiplier falls back to the recurring
+# peaks alone and says so rather than silently returning 1.0.
+
+#: Peaks that recur on the same civil dates every year, as
+#: ((start_month, start_day), (end_month, end_day), multiplier, label).
+RECURRING_PEAKS: list[tuple[tuple[int, int], tuple[int, int], float, str]] = [
+    ((5, 10), (6, 30), 1.30, "summer school holidays"),
+    ((12, 18), (1, 5), 1.45, "Christmas / New Year"),
+    ((10, 1), (10, 15), 1.10, "early-October shoulder peak"),
+]
+
+#: Year-specific festival windows: year -> list of (start, end, mult, label)
+#: as (month, day) tuples. Approximate; verify before relying on them.
+FESTIVAL_PEAKS: dict[int, list[tuple[tuple[int, int], tuple[int, int], float, str]]] = {
+    2026: [
+        ((10, 15), (10, 22), 1.25, "Durga Puja / Dussehra"),
+        ((11, 3), (11, 13), 1.40, "Diwali"),
+        ((3, 17), (3, 23), 1.15, "Eid al-Fitr"),
+    ],
+    2027: [
+        ((10, 5), (10, 12), 1.25, "Durga Puja / Dussehra"),
+        ((10, 24), (11, 3), 1.40, "Diwali"),
+        ((3, 7), (3, 13), 1.15, "Eid al-Fitr"),
+    ],
+    2028: [
+        ((9, 23), (9, 30), 1.25, "Durga Puja / Dussehra"),
+        ((11, 11), (11, 21), 1.40, "Diwali"),
+        ((2, 24), (3, 1), 1.15, "Eid al-Fitr"),
+    ],
+}
+
+LAST_CALENDARED_YEAR = max(FESTIVAL_PEAKS)
+
+#: Peak demand hits domestic India hardest; long-haul is less festival-driven
+#: but still moves on school holidays.
+SEASON_SENSITIVITY: dict[str, float] = {
+    "domestic_india": 1.0,
+    "short_haul_intl": 0.7,
+    "long_haul_intl": 0.5,
+    "foreign_domestic": 0.3,
 }
 
 # --------------------------------------------------------------------------

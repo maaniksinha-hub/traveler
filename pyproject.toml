@@ -11,13 +11,23 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
+# The core engine stays stdlib-only and portable. Numerics are needed only
+# to fit the market model from observed fares.
+calibrate = ["requests>=2.31", "numpy>=1.24", "scipy>=1.10"]
 dev = ["pytest>=7"]
 
 [project.scripts]
 traveler = "traveler.cli:main"
+traveler-snapshot = "traveler.calibration.snapshot:main"
+traveler-backtest = "traveler.calibration.backtest:main"
+traveler-fit = "traveler.calibration.fit:main"
 
 [tool.setuptools]
-packages = ["traveler"]
+packages = ["traveler", "traveler.calibration"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "live: hits the real Amadeus API; needs credentials. Deselected by default.",
+]
+addopts = "-m 'not live'"

@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as _dt
 
 from . import options, payments, rights, routing, tactics, timing
+from .knowledge import AIRPORT_COUNTRY
+from .market import DEFAULT_MODEL, MarketModel
 from .models import (
     Channel,
     MarketRegime,
@@ -17,8 +19,16 @@ from .models import (
 
 
 def _touches_us(trip: Trip) -> bool:
-    us = {"JFK", "EWR", "SFO", "ORD", "IAD", "LAX", "BOS", "SEA", "ATL", "DFW"}
-    return trip.origin.upper() in us or trip.destination.upper() in us
+    """Whether US DOT protections apply.
+
+    Derived from the country map rather than a hardcoded airport list, which
+    previously missed most US gateways -- BOM-MIA silently lost its DOT
+    rights while BOM-JFK kept them.
+    """
+    return any(
+        AIRPORT_COUNTRY.get(code.strip().upper()) == "US"
+        for code in (trip.origin, trip.destination)
+    )
 
 
 def plan_trip(trip: Trip,
@@ -26,19 +36,24 @@ def plan_trip(trip: Trip,
               regime: MarketRegime = MarketRegime.RISING,
               today: _dt.date | None = None,
               decision_probability: float = 0.8,
-              foreign_pos: bool = False) -> Plan:
+              foreign_pos: bool = False,
+              model: MarketModel | None = None) -> Plan:
     """Produce a complete booking strategy for one trip.
 
-    The default regime is RISING, reflecting the 2026 fuel-shock market. Pass
-    a different regime when conditions change -- it shifts every timing
-    decision rather than being baked into the curve.
+    The default regime is RISING, reflecting the 2026 fuel-shock market. The
+    default market model is the hand-authored one; pass a ``FittedMarketModel``
+    once calibration has run against real observations.
     """
     traveller = traveller or Traveller()
     today = today or _dt.date.today()
+    model = model or DEFAULT_MODEL
     days_out = trip.days_out(today)
 
     route_class = routing.classify(trip)
-    urgency_level, timing_note = timing.urgency(days_out, route_class, regime)
+    season_mult, season_note = model.season_multiplier(trip.depart, route_class)
+    urgency_level, timing_note = timing.urgency(
+        days_out, route_class, regime, season_mult
+    )
 
     plan = Plan(
         trip=trip,
@@ -46,8 +61,10 @@ def plan_trip(trip: Trip,
         urgency=urgency_level,
         timing_note=timing_note,
         trigger_price_inr=timing.trigger_price(
-            trip.baseline_fare, days_out, route_class
+            trip.baseline_fare, days_out, route_class, season_mult, model
         ),
+        season_multiplier=season_mult,
+        season_note=season_note,
     )
     plan.fare_verdict = _fare_verdict(trip, plan.trigger_price_inr)
 
@@ -55,13 +72,15 @@ def plan_trip(trip: Trip,
     plan.tactics = tactics.build(trip, traveller, route_class)
 
     # --- Optionality -------------------------------------------------------
-    lookin = options.dgca_lookin(trip, route_class, days_out)
+    lookin = options.dgca_lookin(trip, route_class, days_out, model)
     if lookin is not None:
         plan.options.append(lookin)
 
     if urgency_level in (Urgency.HOLD_AND_WATCH, Urgency.BOOK_NOW):
         plan.options.append(
-            options.fare_hold(trip, route_class, days_out, decision_probability)
+            options.fare_hold(
+                trip, route_class, days_out, decision_probability, model
+            )
         )
 
     award = options.award_placeholder(
@@ -76,7 +95,7 @@ def plan_trip(trip: Trip,
         traveller,
         route_class,
         booking_date=today,
-        lookin_value_inr=lookin.expected_value_inr if lookin else 0.0,
+        lookin_value_inr=lookin.expected_value.mid if lookin else 0.0,
         foreign_pos=foreign_pos,
     )
 
@@ -89,7 +108,7 @@ def plan_trip(trip: Trip,
     )
 
     # --- Risks -------------------------------------------------------------
-    plan.risks = _risks(trip, traveller, route_class, plan)
+    plan.risks = _risks(trip, traveller, route_class, plan, model)
     return plan
 
 
@@ -125,7 +144,7 @@ def _fare_verdict(trip: Trip, trigger: float | None) -> str | None:
 
 
 def _risks(trip: Trip, traveller: Traveller, route_class: RouteClass,
-           plan: Plan) -> list[str]:
+           plan: Plan, model: MarketModel) -> list[str]:
     out: list[str] = []
 
     if trip.flexibility.accepts_self_transfer:
@@ -156,12 +175,16 @@ def _risks(trip: Trip, traveller: Traveller, route_class: RouteClass,
             "fare holds and the DGCA window are your remaining levers."
         )
 
-    if trip.observed_fare is None and trip.baseline_fare is None:
+    if trip.reference_fare is None:
         out.append(
             "No fare data supplied: option values and the payment stack are "
             "qualitative only. Re-run with --fare and --baseline for numbers."
         )
 
+    out.append(
+        f"Model provenance: {model.provenance}. Rankings are more reliable "
+        f"than the rupee figures until calibration has run."
+    )
     out.append(
         "Pay by credit card in all cases -- chargeback rights are the backstop "
         "for every other risk here."
@@ -171,15 +194,26 @@ def _risks(trip: Trip, traveller: Traveller, route_class: RouteClass,
 
 def summarise(plan: Plan) -> dict[str, object]:
     """Machine-readable summary, for tests and downstream tooling."""
-    fare = plan.trip.observed_fare or plan.trip.baseline_fare
+    fare = plan.trip.reference_fare
+    portfolio = tactics.portfolio_estimate(plan.tactics, fare)
+    payment = plan.payment
     return {
         "route_class": plan.route_class.value,
         "urgency": plan.urgency.value,
         "days_out": plan.trip.days_out(),
         "trigger_price_inr": plan.trigger_price_inr,
         "fare_verdict": plan.fare_verdict,
+        "season_multiplier": plan.season_multiplier,
         "top_tactics": [t.key for t in plan.headline_tactics[:5]],
-        "portfolio_saving_inr": tactics.portfolio_estimate(plan.tactics, fare),
-        "payment_channel": plan.payment.channel.value if plan.payment else None,
-        "payment_net_inr": plan.payment.net_discount_inr if plan.payment else None,
+        "portfolio_saving_inr": None if portfolio is None else {
+            "low": round(portfolio.low, 2),
+            "mid": round(portfolio.mid, 2),
+            "high": round(portfolio.high, 2),
+        },
+        "payment_channel": payment.channel.value if payment else None,
+        "payment_cash_off_inr": payment.cash_off_inr if payment else None,
+        "payment_points_value_inr": payment.points_value_inr if payment else None,
+        "payment_option_value_inr": (
+            payment.option_value_inr - payment.forfeited_option_inr
+        ) if payment else None,
     }

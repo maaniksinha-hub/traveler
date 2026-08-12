@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "type": "itinerary-price-metric",
+      "origin": {"iataCode": "DEL"},
+      "destination": {"iataCode": "BOM"},
+      "departureDate": "2026-12-10",
+      "currencyCode": "INR",
+      "priceMetrics": [
+        {"amount": "4200.00", "quartileRanking": "MINIMUM"},
+        {"amount": "5800.00", "quartileRanking": "FIRST"},
+        {"amount": "7400.00", "quartileRanking": "MEDIUM"},
+        {"amount": "9900.00", "quartileRanking": "THIRD"},
+        {"amount": "15600.00", "quartileRanking": "MAXIMUM"}
+      ]
+    }
+  ]
+}
