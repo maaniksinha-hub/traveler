@@ -1,0 +1,7 @@
+{
+  "search_parameters": {"engine": "google_flights", "currency": "INR"},
+  "best_flights": [
+    {"price": 41200, "flights": [{"airline": "Vistara"}]}
+  ],
+  "other_flights": []
+}

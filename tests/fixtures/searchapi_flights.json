@@ -1,0 +1,27 @@
+{
+  "search_parameters": {"engine": "google_flights", "departure_id": "DEL",
+                        "arrival_id": "BOM", "currency": "INR"},
+  "best_flights": [
+    {"price": 5480, "total_duration": 130,
+     "flights": [{"airline": "IndiGo", "flight_number": "6E 2044"}]},
+    {"price": 6120, "total_duration": 145,
+     "flights": [{"airline": "Air India", "flight_number": "AI 806"}]}
+  ],
+  "other_flights": [
+    {"price": 8890, "total_duration": 320,
+     "flights": [{"airline": "SpiceJet", "flight_number": "SG 8169"}]},
+    {"total_duration": 200, "flights": [{"airline": "Akasa Air"}]}
+  ],
+  "price_insights": {
+    "lowest_price": 5480,
+    "price_level": "low",
+    "typical_price_range": {"low_price": 5900, "high_price": 9400},
+    "price_history": [
+      {"price": 7100, "iso_date": "2026-05-15"},
+      {"price": 6800, "iso_date": "2026-06-01"},
+      {"price": 6250, "iso_date": "2026-06-20"},
+      {"price": 5900, "iso_date": "2026-07-10"},
+      {"price": 5480, "iso_date": "2026-08-01"}
+    ]
+  }
+}

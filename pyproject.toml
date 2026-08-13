@@ -21,6 +21,7 @@ traveler = "traveler.cli:main"
 traveler-snapshot = "traveler.calibration.snapshot:main"
 traveler-backtest = "traveler.calibration.backtest:main"
 traveler-fit = "traveler.calibration.fit:main"
+traveler-import = "traveler.calibration.importers:main"
 
 [tool.setuptools]
 packages = ["traveler", "traveler.calibration"]
@@ -28,6 +29,6 @@ packages = ["traveler", "traveler.calibration"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "live: hits the real Amadeus API; needs credentials. Deselected by default.",
+    "live: hits a real fare API; needs credentials. Deselected by default.",
 ]
 addopts = "-m 'not live'"

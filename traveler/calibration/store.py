@@ -13,12 +13,41 @@ from __future__ import annotations
 
 import datetime as _dt
 import sqlite3
+import statistics
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_DB = Path.home() / ".traveler" / "fares.db"
+
+#: A departure needs at least this many observations before its own minimum
+#: is treated as the realised trough rather than "cheapest seen so far".
+MIN_OBSERVATIONS_FOR_REALISED_MIN = 4
+
+#: Sources whose departure dates are synthesised from a lead-time column and
+#: therefore carry no real calendar meaning. Seasonality is not applied to
+#: them -- doing so would inject noise from a date that never existed.
+SYNTHETIC_DATE_SOURCES = frozenset({"kaggle-easemytrip-2022"})
+
+
+@dataclass(frozen=True)
+class CurvePoint:
+    """One normalised observation, carrying what the fit needs to weight it."""
+
+    days_out: int
+    ratio: float
+    observed_at: str
+    source: str
+    #: Which reference the ratio was computed against.
+    basis: str = "route_reference"
+
+    @property
+    def observed_date(self) -> _dt.date | None:
+        try:
+            return _dt.datetime.fromisoformat(self.observed_at).date()
+        except (TypeError, ValueError):
+            return None
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS observations (
@@ -164,23 +193,100 @@ class FareStore:
             return conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
 
     def normalised_curve(self, origin: str, destination: str,
-                         cabin: str | None = None) -> list[tuple[int, float]]:
-        """(days_out, price / that departure's minimum) pairs.
+                         cabin: str | None = None,
+                         today: _dt.date | None = None,
+                         deconfound_season: bool = True) -> list[CurvePoint]:
+        """Observations normalised so different routes and seasons compare.
 
-        Normalising each departure by its own realised minimum is what makes
-        observations from different routes and seasons comparable, and is the
-        input the curve fit needs.
+        Two corrections make this usable on the data the engine can actually
+        collect:
+
+        **Reference price.** Dividing by each departure's own minimum only
+        works once that departure has completed and has been observed enough
+        times. A cross-sectional sweep contributes ONE observation per
+        departure, whose own minimum is itself -- every ratio would be
+        exactly 1.0 and the fit would learn nothing from a grid sweep. So a
+        departure uses its own realised minimum only when it has completed
+        with enough coverage; otherwise it is normalised against a
+        route-level reference built from the departures that qualify.
+
+        **Seasonality.** Cross-sectional data confounds the days-out effect
+        with the departure-date effect -- a departure 300 days out sits in a
+        different season than one 7 days out. Dividing the season multiplier
+        out here means every consumer gets deconfounded data by construction.
+        Sources with synthetic departure dates are exempted, since their
+        calendar position is meaningless.
         """
+        from .. import seasonality
+        from ..models import Trip
+        from ..routing import classify
+
+        today = today or _dt.date.today()
         rows = self.series(origin, destination, cabin)
+        if not rows:
+            return []
+
         by_departure: dict[str, list[sqlite3.Row]] = {}
         for row in rows:
             by_departure.setdefault(row["depart_date"], []).append(row)
 
-        out: list[tuple[int, float]] = []
-        for observations in by_departure.values():
-            floor = min(r["price"] for r in observations)
-            if floor <= 0:
+        route_class = classify(Trip(origin=origin, destination=destination,
+                                    depart=today))
+
+        def season_for(depart_iso: str, source: str) -> float:
+            if not deconfound_season or source in SYNTHETIC_DATE_SOURCES:
+                return 1.0
+            try:
+                depart = _dt.date.fromisoformat(depart_iso)
+            except ValueError:
+                return 1.0
+            multiplier, _ = seasonality.season_multiplier(depart, route_class)
+            return multiplier or 1.0
+
+        # Departures good enough to define a reference: completed, and seen
+        # often enough that their minimum is plausibly the realised trough.
+        qualified: dict[str, float] = {}
+        for depart_iso, observations in by_departure.items():
+            if len(observations) < MIN_OBSERVATIONS_FOR_REALISED_MIN:
                 continue
-            for r in observations:
-                out.append((r["days_out"], r["price"] / floor))
-        return sorted(out)
+            try:
+                if _dt.date.fromisoformat(depart_iso) > today:
+                    continue
+            except ValueError:
+                continue
+            prices = [
+                r["price"] / season_for(depart_iso, r["source"])
+                for r in observations if r["price"] > 0
+            ]
+            if prices:
+                qualified[depart_iso] = min(prices)
+
+        # Route-level fallback for departures that do not qualify.
+        if qualified:
+            route_reference = statistics.median(qualified.values())
+        else:
+            deseasoned = [
+                r["price"] / season_for(r["depart_date"], r["source"])
+                for r in rows if r["price"] > 0
+            ]
+            route_reference = min(deseasoned) if deseasoned else 0.0
+        if route_reference <= 0:
+            return []
+
+        out: list[CurvePoint] = []
+        for depart_iso, observations in by_departure.items():
+            realised = qualified.get(depart_iso)
+            reference = realised if realised else route_reference
+            basis = "realised_min" if realised else "route_reference"
+            for row in observations:
+                if row["price"] <= 0:
+                    continue
+                price = row["price"] / season_for(depart_iso, row["source"])
+                out.append(CurvePoint(
+                    days_out=row["days_out"],
+                    ratio=price / reference,
+                    observed_at=row["observed_at"],
+                    source=row["source"],
+                    basis=basis,
+                ))
+        return sorted(out, key=lambda p: p.days_out)

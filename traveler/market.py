@@ -102,23 +102,49 @@ class DefaultMarketModel:
 class FittedMarketModel:
     """Curve fitted from observed fares by ``calibration.fit``.
 
-    Falls back to the default model for any route class the fit did not have
-    enough observations for -- a partially calibrated model is useful, a
-    silently extrapolated one is not.
+    Falls back to the default model in two situations, because a partially
+    calibrated model is useful and a silently extrapolated one is not:
+
+    - **route classes the fit skipped** for want of data;
+    - **days-out values outside the fitted coverage window.** A seed dataset
+      that stops at 49 days out says nothing about 200 days out, and asking
+      the fitted curve anyway would be fabrication dressed as measurement.
     """
 
     coefficients: dict[str, dict[str, float]] = field(default_factory=dict)
     fitted_at: str = ""
     observation_counts: dict[str, int] = field(default_factory=dict)
+    effective_observations: dict[str, float] = field(default_factory=dict)
+    source_mix: dict[str, dict[str, float]] = field(default_factory=dict)
+    days_out_coverage: dict[str, list[int]] = field(default_factory=dict)
     _fallback: DefaultMarketModel = field(default_factory=DefaultMarketModel)
 
     @property
     def provenance(self) -> str:
-        classes = ", ".join(
-            f"{k}(n={self.observation_counts.get(k, 0)})"
-            for k in sorted(self.coefficients)
-        ) or "nothing"
-        return f"fitted {self.fitted_at} from observed fares: {classes}"
+        if not self.coefficients:
+            return "fitted model with no calibrated route classes"
+        parts = []
+        for key in sorted(self.coefficients):
+            n = self.observation_counts.get(key, 0)
+            span = self.days_out_coverage.get(key)
+            window = f", {span[0]}-{span[1]}d" if span else ""
+            mix = self.source_mix.get(key, {})
+            dominant = max(mix.items(), key=lambda kv: kv[1], default=None)
+            share = f", mostly {dominant[0]} {dominant[1]:.0%}" if dominant else ""
+            parts.append(f"{key}(n={n:,}{window}{share})")
+        return f"fitted {self.fitted_at} from observed fares: {', '.join(parts)}"
+
+    @property
+    def is_seed_dominated(self) -> bool:
+        """Whether any calibrated class leans mostly on imported static data.
+
+        Callers widen their uncertainty bands when this is true.
+        """
+        for mix in self.source_mix.values():
+            for source, share in mix.items():
+                if source.startswith("kaggle") and share >= 0.4:
+                    return True
+        return False
 
     @classmethod
     def load(cls, path: str | Path) -> "FittedMarketModel":
@@ -127,13 +153,23 @@ class FittedMarketModel:
             coefficients=payload.get("coefficients", {}),
             fitted_at=payload.get("fitted_at", "unknown"),
             observation_counts=payload.get("observation_counts", {}),
+            effective_observations=payload.get("effective_observations", {}),
+            source_mix=payload.get("source_mix", {}),
+            days_out_coverage=payload.get("days_out_coverage", {}),
         )
 
     def _has(self, route_class: RouteClass) -> bool:
         return route_class.value in self.coefficients
 
+    def covers(self, days_out: int, route_class: RouteClass) -> bool:
+        """Whether real data actually spans this lead time."""
+        span = self.days_out_coverage.get(route_class.value)
+        if not span or len(span) != 2:
+            return self._has(route_class)
+        return span[0] <= days_out <= span[1]
+
     def price_multiplier(self, days_out: int, route_class: RouteClass) -> float:
-        if not self._has(route_class):
+        if not self._has(route_class) or not self.covers(days_out, route_class):
             return self._fallback.price_multiplier(days_out, route_class)
         if days_out < 0:
             return float("inf")
@@ -146,7 +182,7 @@ class FittedMarketModel:
         return 1.0 + near + far
 
     def volatility_pct(self, days_out: int, route_class: RouteClass) -> float:
-        if not self._has(route_class):
+        if not self._has(route_class) or not self.covers(days_out, route_class):
             return self._fallback.volatility_pct(days_out, route_class)
         c = self.coefficients[route_class.value]
         near = c.get("vol_near", 12.0)

@@ -1,0 +1,10 @@
+{
+  "search_parameters": {"currency": "INR"},
+  "best_flights": [{"price": "not-a-number", "flights": []}],
+  "price_insights": {
+    "price_history": [{"price": null, "iso_date": "2026-06-01"},
+                      {"price": 6000, "iso_date": "garbage"},
+                      {"price": 6400, "iso_date": "2026-06-15"},
+                      "nonsense"]
+  }
+}

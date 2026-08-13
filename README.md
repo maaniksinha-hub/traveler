@@ -21,7 +21,7 @@ python3 -m traveler --from BLR --to LHR \
 Add `--json` for machine-readable output.
 
 ```bash
-python3 -m pytest tests/ -q          # 145 tests
+python3 -m pytest tests/ -q          # 189 tests
 pip install -e ".[calibrate]"        # numpy/scipy/requests, calibration only
 ```
 
@@ -158,21 +158,92 @@ booking early carries an embedded free option most travellers never exercise.
 The path from hand-authored to measured:
 
 ```
-snapshot  →  store  →  backtest / fit  →  FittedMarketModel
+seed / snapshot  →  store  →  backtest / fit  →  FittedMarketModel
 ```
+
+**Amadeus Self-Service was decommissioned on 17 July 2026** — portal offline,
+keys disabled, no new registration. `AmadeusSource` is retained because it
+still works against Amadeus *Enterprise* and is the reference implementation
+of the `FareSource` seam, but new deployments use `GoogleFlightsSource`.
+
+### Solving the cold start
+
+Polling one itinerary a day fills the booking curve at one point per day, so
+a naive setup waits months. Three things collapse that:
+
+**Harvest history rather than accumulate it.** Google publishes a price
+series per route, exposed as `price_insights.price_history`. One call returns
+months of curve data that was never polled. It is best-effort — Google only
+generates insights for routes it considers popular — so every path degrades
+to offers-only rather than failing.
+
+**Sweep departure dates, not just days.** The curve is a function of
+`days_out`, so `--grid` fans one route across many departures in a single run
+and fills the whole axis at once. In tests this recovers a known curve
+(`decay=18`, `amplitude=1.0`) to R² > 0.8 from **one sweep**, where 30 days
+of longitudinal polling on six itineraries still falls short of the
+threshold.
+
+**Seed from a published dataset.** The Kaggle EaseMyTrip set (300,261 Indian
+domestic rows with a `days_left` column) teaches the cliff region at a sample
+size live polling will not reach for a year.
 
 ```bash
-# 1. Accumulate observations. No API hands you a back catalogue, so this
-#    only pays off by running daily for months. Put it in cron.
-AMADEUS_CLIENT_ID=... AMADEUS_CLIENT_SECRET=... \
-    python3 -m traveler.calibration.snapshot --watchlist watchlist.json
+# 0. Optional: seed the cliff from a static dataset (download it yourself;
+#    Kaggle needs an account).
+python3 -m traveler.calibration.importers Clean_Dataset.csv
 
-# 2. Ask whether the strategy actually beats naive baselines.
+# 1. Plan the sweep before spending metered calls.
+python3 -m traveler.calibration.snapshot --watchlist watchlist.json \
+    --grid 20 --stride 14 --harvest-history --dry-run
+
+# 2. Collect. Cross-sectional sweep + history harvest.
+SEARCHAPI_API_KEY=... python3 -m traveler.calibration.snapshot \
+    --watchlist watchlist.json --grid 20 --stride 14 \
+    --harvest-history --max-calls 100
+
+# 3. Ask whether the strategy actually beats naive baselines.
 python3 -m traveler.calibration.backtest --route DEL-BOM
 
-# 3. Fit the curve once there is enough data.
+# 4. Fit.
 python3 -m traveler.calibration.fit --out fitted_market.json
 ```
+
+### Not all observations are equal
+
+A live offer is a price you could have transacted; Google's history is an
+aggregate; a 2022 scrape describes a market that no longer exists. Three
+guards keep that honest:
+
+- **Recency and quality weighting** — source quality decayed with a 365-day
+  half-life, so a 2022 row counts ~2% of a fresh one.
+- **Bulk-import share cap** — weighting alone is not enough, since 300,000
+  stale rows at 2% still outweigh 500 live ones. No bulk-imported source may
+  exceed 50% of total weight. Deliberately *not* applied to live feeds: an
+  earlier version capped Google's history too and threw away the very data
+  that makes cold-start fast.
+- **Coverage guard** — a dataset stopping at 49 days out cannot speak about
+  200 days out, so `FittedMarketModel` falls back to hand-authored values
+  outside the fitted window rather than extrapolating.
+
+### The fit audits the seasonality model
+
+Cross-sectional data confounds lead time with season, so the season
+multiplier is divided out before fitting. But that only helps if the festival
+calendar is approximately right — dividing out an effect the data does not
+contain *injects* error. Measured on synthetic data:
+
+| data has season | deconfound | recovered decay (true 18) | R² |
+|---|---|---|---|
+| yes | yes | 22.9 | 0.907 |
+| yes | no | 39.5 | 0.101 |
+| no | yes | 151.1 | 0.209 |
+| no | no | 22.9 | 0.907 |
+
+So `fit` runs both and keeps the better one. Which wins is itself a
+diagnostic: if removing the modelled seasonality makes the fit *worse*, the
+calendar in `knowledge.py` does not match that route class, and the fit says
+so in a `SEASONALITY WARNING`.
 
 `watchlist.json` is a list of itineraries:
 
@@ -202,19 +273,24 @@ store, never logged, and never appear in `repr()` or exception messages.
 
 ## Testing
 
-145 tests, biased toward **invariants over fixed values**. A test asserting
+189 tests, biased toward **invariants over fixed values**. A test asserting
 the curve bottoms out exactly where it was coded to bottom out is a
 change-detector, not validation. What is asserted instead: monotonicity
 through the cliff, volatility strictly decreasing with lead time, portfolio
 estimates never exceeding the fare, estimate bounds ordered, seasonality
 bounded, the engine never crashing across a swept input space.
 
-Amadeus is tested against recorded fixtures (`tests/fixtures/`) covering
-auth failure, normal offers, empty results, malformed entries and rate
-limiting. Live tests are marked and deselected by default:
+Both fare sources are tested against recorded fixtures (`tests/fixtures/`)
+covering auth failure, normal offers, empty results, malformed entries, rate
+limiting, and — for Google Flights — responses with and without
+`price_insights`. `test_data_sources.py` additionally checks the claims this
+rests on: that a grid sweep does not collapse to all-ones ratios, that a
+stale seed cannot outvote live data, that the coverage guard refuses to
+extrapolate, and that a known curve is recovered from one sweep. Live tests
+are marked and deselected by default:
 
 ```bash
-pytest -m live          # needs real AMADEUS_* credentials
+pytest -m live          # needs a real SEARCHAPI_API_KEY
 ```
 
 ---

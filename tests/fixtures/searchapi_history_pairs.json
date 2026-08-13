@@ -1,0 +1,9 @@
+{
+  "search_parameters": {"currency": "INR"},
+  "best_flights": [{"price": 5000, "flights": [{"airline": "IndiGo"}]}],
+  "price_insights": {
+    "lowest_price": 5000,
+    "typical_price_range": [5200, 8800],
+    "price_history": [[1747267200, 7100], [1751328000, 6250], [1754006400, 5480]]
+  }
+}

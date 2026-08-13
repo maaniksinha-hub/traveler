@@ -77,12 +77,17 @@ def test_days_out_is_derived_not_stored_by_caller():
     assert obs(45, 5000).days_out == 45
 
 
-def test_normalised_curve_divides_by_each_departures_own_minimum(store):
-    store.record([obs(60, 10_000), obs(30, 5_000), obs(7, 15_000)])
-    curve = dict(store.normalised_curve("DEL", "BOM"))
-    assert curve[30] == pytest.approx(1.0)
-    assert curve[60] == pytest.approx(2.0)
-    assert curve[7] == pytest.approx(3.0)
+def test_completed_departure_normalises_against_its_realised_minimum(store):
+    store.record([obs(60, 10_000), obs(30, 5_000), obs(14, 7_500),
+                  obs(7, 15_000)])
+    after = DEPART + _dt.timedelta(days=1)
+    curve = {p.days_out: p for p in
+             store.normalised_curve("DEL", "BOM", today=after,
+                                    deconfound_season=False)}
+    assert all(p.basis == "realised_min" for p in curve.values())
+    assert curve[30].ratio == pytest.approx(1.0)
+    assert curve[60].ratio == pytest.approx(2.0)
+    assert curve[7].ratio == pytest.approx(3.0)
 
 
 def test_series_filters_by_cabin(store):
@@ -266,19 +271,24 @@ class _FakeSource:
 
 def test_snapshot_records_observations(store):
     items = [WatchItem("DEL", "BOM", DEPART)]
-    assert run_once(items, _FakeSource([5000.0, 6100.0]), store, verbose=False) == 2
+    result = run_once(items, _FakeSource([5000.0, 6100.0]), store,
+                      verbose=False, today=_dt.date(2026, 8, 12))
+    assert result.recorded == 2 and result.calls == 1
 
 
 def test_one_failing_route_does_not_abort_the_batch(store, capsys):
     items = [WatchItem("DEL", "XXX", DEPART), WatchItem("DEL", "BOM", DEPART)]
-    recorded = run_once(items, _FakeSource(fail_on={"XXX"}), store, verbose=True)
-    assert recorded == 1, "the healthy route must still be recorded"
+    result = run_once(items, _FakeSource(fail_on={"XXX"}), store, verbose=True,
+                      today=_dt.date(2026, 8, 12))
+    assert result.recorded == 1, "the healthy route must still be recorded"
+    assert result.failures == 1
     assert "FAIL" in capsys.readouterr().err
 
 
 def test_past_departures_are_skipped(store):
     items = [WatchItem("DEL", "BOM", _dt.date(2020, 1, 1))]
-    assert run_once(items, _FakeSource(), store, verbose=False) == 0
+    result = run_once(items, _FakeSource(), store, verbose=False)
+    assert result.recorded == 0 and result.skipped == 1 and result.calls == 0
 
 
 def test_watchlist_loads_from_json(tmp_path):
