@@ -34,7 +34,12 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .sources import FareSource, FareSourceError, GoogleFlightsSource
+from .sources import (
+    FareSource,
+    FareSourceError,
+    FastFlightsSource,
+    GoogleFlightsSource,
+)
 from .store import DEFAULT_DB, FareStore
 
 #: Metered APIs make an unbounded grid sweep an easy way to burn a month's
@@ -225,6 +230,11 @@ def build_parser() -> argparse.ArgumentParser:
                       help=f"Hard ceiling on API calls (default "
                            f"{DEFAULT_MAX_CALLS}). These APIs are metered.")
 
+    p.add_argument("--source", default="fast-flights",
+                   choices=["fast-flights", "google-flights"],
+                   help="fast-flights is free and keyless (default); "
+                        "google-flights needs SEARCHAPI_API_KEY but can also "
+                        "harvest published price history")
     p.add_argument("--once", action="store_true",
                    help="Poll once and exit (the normal cron mode)")
     p.add_argument("--dry-run", action="store_true",
@@ -249,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("Supply --watchlist, or --route with --depart.")
 
     items = expand_grid(items, args.grid, args.stride)
-    per_item = 2 if args.harvest_history else 1
+    per_item = 2 if (args.harvest_history and args.source == "google-flights") else 1
     planned = min(len(items) * per_item, args.max_calls)
 
     if args.dry_run:
@@ -263,9 +273,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        source = GoogleFlightsSource()
+        source = (FastFlightsSource() if args.source == "fast-flights"
+                  else GoogleFlightsSource())
     except FareSourceError as exc:
         raise SystemExit(str(exc)) from exc
+
+    if args.source == "fast-flights" and args.harvest_history:
+        print("Note: fast-flights exposes no price history; --harvest-history "
+              "has no effect. Use --source google-flights for that.",
+              file=sys.stderr)
 
     store = FareStore(args.db)
     print(f"Polling {len(items)} itinerar{'y' if len(items) == 1 else 'ies'} "

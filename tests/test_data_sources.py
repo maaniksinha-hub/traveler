@@ -568,3 +568,150 @@ def test_fit_declines_to_deconfound_when_it_would_hurt(tmp_path):
     assert "warning" in note and "festival calendar" in note["warning"]
     # And the kept fit is the good one, not the damaged one.
     assert payload["coefficients"]["domestic_india"]["r_squared"] > 0.8
+
+
+# --------------------------------------------------------------------------
+# Free sources: airport registry (OurAirports) and fast-flights
+# --------------------------------------------------------------------------
+
+def test_registry_covers_far_more_than_the_hand_tables():
+    from traveler import airports
+    from traveler.knowledge import AIRPORT_COUNTRY, INDIAN_AIRPORTS
+
+    stats = airports.coverage()
+    assert stats["airports"] > 3_000
+    assert stats["indian"] > len(INDIAN_AIRPORTS)
+    assert stats["countries"] > 100
+    assert stats["airports"] > len(AIRPORT_COUNTRY)
+
+
+@pytest.mark.parametrize("code,country", [
+    ("DEL", "IN"), ("BOM", "IN"), ("MIA", "US"), ("LAX", "US"),
+    ("BCN", "ES"), ("HAN", "VN"), ("DOH", "QA"), ("NBO", "KE"),
+])
+def test_registry_resolves_countries_the_hand_table_missed(code, country):
+    from traveler import airports
+    assert airports.country_of(code) == country
+
+
+def test_registry_falls_back_to_hand_tables_when_data_missing(monkeypatch):
+    """A missing data file degrades the engine, it must not break it."""
+    from traveler import airports
+
+    monkeypatch.setattr(airports, "DATA_FILE", Path("/nonexistent/airports.csv"))
+    airports._registry.cache_clear()
+    try:
+        assert airports.country_of("DEL") == "IN"      # from INDIAN_AIRPORTS
+        assert airports.country_of("JFK") == "US"      # from AIRPORT_COUNTRY
+        assert airports.coverage()["airports"] == 0
+    finally:
+        airports._registry.cache_clear()
+
+
+def test_unknown_code_still_returns_none():
+    from traveler import airports
+    assert airports.country_of("ZZZ") is None
+
+
+def test_registry_improves_route_classification():
+    from traveler.models import Trip
+    from traveler.routing import classify
+
+    # Neither endpoint was in the old hand table.
+    assert classify(Trip(origin="BCN", destination="HAN",
+                         depart=DEPART)) is RouteClass.FOREIGN_DOMESTIC
+    assert classify(Trip(origin="DEL", destination="HAN",
+                         depart=DEPART)) is RouteClass.LONG_HAUL_INTL
+
+
+def test_us_gateways_resolve_from_the_registry():
+    from traveler import airports
+    for code in ("JFK", "MIA", "LAX", "SEA", "AUS", "PDX", "BNA", "SJC"):
+        assert airports.country_of(code) == "US", code
+
+
+# --- fast-flights (free, keyless) ------------------------------------------
+
+class _FakeFlight:
+    def __init__(self, price, airlines=None):
+        self.price = price
+        self.airlines = airlines or []
+
+
+def test_fastflights_parses_a_resultlist():
+    from traveler.calibration.sources import SOURCE_FASTFLIGHTS, FastFlightsSource
+
+    result = [_FakeFlight(5480, ["IndiGo"]), _FakeFlight("INR 6,120", ["Air India"])]
+    parsed = FastFlightsSource.parse_result(
+        result, "DEL", "BOM", DEPART, None, "economy")
+    assert [p.price for p in parsed] == [5480.0, 6120.0]
+    assert parsed[0].carrier == "IndiGo"
+    assert all(p.source == SOURCE_FASTFLIGHTS for p in parsed)
+
+
+def test_fastflights_accepts_the_legacy_wrapper_shape():
+    from traveler.calibration.sources import FastFlightsSource
+
+    class _Wrapper:
+        flights = [_FakeFlight(4200, ["Akasa"])]
+
+    parsed = FastFlightsSource.parse_result(
+        _Wrapper(), "DEL", "BOM", DEPART, None, "economy")
+    assert len(parsed) == 1 and parsed[0].price == pytest.approx(4200.0)
+
+
+def test_fastflights_skips_unpriced_itineraries():
+    from traveler.calibration.sources import FastFlightsSource
+
+    result = [_FakeFlight(None), _FakeFlight("Price unavailable"),
+              _FakeFlight(0), _FakeFlight(7300, ["SpiceJet"])]
+    parsed = FastFlightsSource.parse_result(
+        result, "DEL", "BOM", DEPART, None, "economy")
+    assert len(parsed) == 1 and parsed[0].price == pytest.approx(7300.0)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("INR 5,480", 5480.0),
+    ("₹12,300", 12300.0),
+    ("Rs. 8999", 8999.0),          # the full stop must not become a decimal
+    ("Rs. 8,999.50", 8999.5),
+    ("$1,234.56", 1234.56),
+    (4500, 4500.0),
+    ("0", None),
+    ("", None),
+    ("Price unavailable", None),
+    (None, None),
+])
+def test_price_coercion_handles_display_strings(raw, expected):
+    from traveler.calibration.sources import _coerce_price
+
+    got = _coerce_price(raw)
+    if expected is None:
+        assert got is None
+    else:
+        assert got == pytest.approx(expected)
+
+
+def test_fastflights_reports_a_clear_error_when_not_installed(monkeypatch):
+    from traveler.calibration.sources import FastFlightsSource
+
+    source = FastFlightsSource()
+    monkeypatch.setattr(
+        source, "_api",
+        lambda: (_ for _ in ()).throw(FareSourceError("pip install fast-flights")))
+    with pytest.raises(FareSourceError, match="pip install fast-flights"):
+        source.search("DEL", "BOM", DEPART)
+
+
+def test_fastflights_satisfies_the_faresource_protocol():
+    from traveler.calibration.sources import FareSource, FastFlightsSource
+    assert isinstance(FastFlightsSource(), FareSource)
+
+
+def test_fastflights_needs_no_credentials(monkeypatch):
+    """The whole point: no key, no metering, no signup."""
+    from traveler.calibration.sources import FastFlightsSource
+
+    for var in ("SEARCHAPI_API_KEY", "AMADEUS_CLIENT_ID", "AMADEUS_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    assert FastFlightsSource().name == "fast-flights"

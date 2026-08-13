@@ -21,7 +21,8 @@ python3 -m traveler --from BLR --to LHR \
 Add `--json` for machine-readable output.
 
 ```bash
-python3 -m pytest tests/ -q          # 189 tests
+python3 -m pytest tests/ -q          # 218 tests
+pip install -e ".[free]"             # fast-flights: free, keyless fare data
 pip install -e ".[calibrate]"        # numpy/scipy/requests, calibration only
 ```
 
@@ -193,20 +194,63 @@ size live polling will not reach for a year.
 #    Kaggle needs an account).
 python3 -m traveler.calibration.importers Clean_Dataset.csv
 
-# 1. Plan the sweep before spending metered calls.
+# 1. Plan the sweep before spending anything.
 python3 -m traveler.calibration.snapshot --watchlist watchlist.json \
-    --grid 20 --stride 14 --harvest-history --dry-run
+    --grid 20 --stride 14 --dry-run
 
-# 2. Collect. Cross-sectional sweep + history harvest.
+# 2. Collect. Default source is free and keyless.
+python3 -m traveler.calibration.snapshot --watchlist watchlist.json \
+    --grid 20 --stride 14 --max-calls 100
+
+# 2b. Or pay for history harvesting, which fast-flights cannot do.
 SEARCHAPI_API_KEY=... python3 -m traveler.calibration.snapshot \
     --watchlist watchlist.json --grid 20 --stride 14 \
-    --harvest-history --max-calls 100
+    --source google-flights --harvest-history --max-calls 100
 
 # 3. Ask whether the strategy actually beats naive baselines.
 python3 -m traveler.calibration.backtest --route DEL-BOM
 
 # 4. Fit.
 python3 -m traveler.calibration.fit --out fitted_market.json
+```
+
+### Free sources
+
+Nothing here requires a paid account.
+
+| Need | Free option | Cost | Caveat |
+|---|---|---|---|
+| Fare data | **fast-flights** (default) | ₹0, no key | A scraper — no SLA, and no price history |
+| Fare history | SearchAPI Google Flights | metered | Only source with `price_insights.price_history` |
+| Airport/geo data | **OurAirports** (bundled) | ₹0, public domain | Refresh occasionally |
+| Cold-start seed | Kaggle EaseMyTrip | ₹0 | 2022 vintage; weighted down automatically |
+
+`fast-flights` reverse-engineers Google Flights' protobuf parameters, so it
+talks to Google directly with no vendor in between and no metering. It is the
+default because calibration wants thousands of observations and metered calls
+make that cost money. It is still a scraper: pin the version, keep
+`--max-calls` modest, and leave the courtesy delay alone. Unmetered is not
+unlimited.
+
+The one thing it cannot do is harvest published price history, so
+`--source google-flights` remains available when that is worth paying for.
+
+### Airport registry
+
+`data/airports.csv` is derived from [OurAirports](https://ourairports.com/data/),
+released under the Open Data Commons PDDL 1.0 (public domain). 4,085 airports
+across 234 countries, 164 Indian, 81 KB, parsed with the standard library.
+
+This replaced hand-maintained tables that covered roughly 60 airports, and
+fixed the failure they caused: unknown codes silently defaulted to long-haul
+international, and US gateways outside a hardcoded list of ten lost their DOT
+rights. The hand tables remain as a fallback, so a missing data file degrades
+the engine rather than breaking it.
+
+```bash
+python3 -m traveler.airports                 # coverage report
+python3 -m traveler.airports --lookup HAN    # one airport
+python3 -m traveler.airports --refresh       # re-derive from upstream
 ```
 
 ### Not all observations are equal
@@ -273,7 +317,7 @@ store, never logged, and never appear in `repr()` or exception messages.
 
 ## Testing
 
-189 tests, biased toward **invariants over fixed values**. A test asserting
+218 tests, biased toward **invariants over fixed values**. A test asserting
 the curve bottoms out exactly where it was coded to bottom out is a
 change-detector, not validation. What is asserted instead: monotonicity
 through the cliff, volatility strictly decreasing with lead time, portfolio

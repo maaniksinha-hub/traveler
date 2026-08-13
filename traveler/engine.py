@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 
 from . import options, payments, rights, routing, tactics, timing
-from .knowledge import AIRPORT_COUNTRY
+from . import airports as airport_registry
 from .market import DEFAULT_MODEL, MarketModel
 from .models import (
     Channel,
@@ -26,7 +26,7 @@ def _touches_us(trip: Trip) -> bool:
     rights while BOM-JFK kept them.
     """
     return any(
-        AIRPORT_COUNTRY.get(code.strip().upper()) == "US"
+        airport_registry.country_of(code) == "US"
         for code in (trip.origin, trip.destination)
     )
 

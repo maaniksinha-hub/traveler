@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from .knowledge import (
-    AIRPORT_COUNTRY,
-    INDIAN_AIRPORTS,
-    MAINSTREAM_AIRPORTS,
-    SHORT_HAUL_COUNTRIES,
-)
+from . import airports
+from .knowledge import SHORT_HAUL_COUNTRIES
 from .models import RouteClass, Trip
 
 
 def country_of(airport: str) -> str | None:
-    """Best-effort ISO country for an IATA code."""
-    code = airport.strip().upper()
-    if code in INDIAN_AIRPORTS:
-        return "IN"
-    return AIRPORT_COUNTRY.get(code)
+    """ISO country for an IATA code.
+
+    Backed by the OurAirports registry, which covers 4,000+ airports; the
+    hand-maintained table in ``knowledge.py`` remains as a fallback.
+    """
+    return airports.country_of(airport)
 
 
 def classify(trip: Trip) -> RouteClass:
@@ -29,8 +26,8 @@ def classify(trip: Trip) -> RouteClass:
     origin = trip.origin.strip().upper()
     dest = trip.destination.strip().upper()
 
-    origin_in = origin in INDIAN_AIRPORTS
-    dest_in = dest in INDIAN_AIRPORTS
+    origin_in = airports.is_indian(origin)
+    dest_in = airports.is_indian(dest)
 
     if origin_in and dest_in:
         return RouteClass.DOMESTIC_INDIA
@@ -57,8 +54,10 @@ def is_udan_candidate(trip: Trip, route_class: RouteClass) -> bool:
     """
     if route_class is not RouteClass.DOMESTIC_INDIA:
         return False
-    endpoints = {trip.origin.upper(), trip.destination.upper()}
-    return bool(endpoints - MAINSTREAM_AIRPORTS)
+    return not all(
+        airports.is_mainstream(code)
+        for code in (trip.origin, trip.destination)
+    )
 
 
 def supports_open_jaw(trip: Trip) -> bool:

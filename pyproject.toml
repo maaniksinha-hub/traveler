@@ -13,6 +13,9 @@ dependencies = []
 [project.optional-dependencies]
 # The core engine stays stdlib-only and portable. Numerics are needed only
 # to fit the market model from observed fares.
+# Free, keyless fare source. Pinned loosely: it is a scraper and Google can
+# change the encoding, so expect occasional maintenance.
+free = ["fast-flights>=3.0"]
 calibrate = ["requests>=2.31", "numpy>=1.24", "scipy>=1.10"]
 dev = ["pytest>=7"]
 
@@ -25,6 +28,9 @@ traveler-import = "traveler.calibration.importers:main"
 
 [tool.setuptools]
 packages = ["traveler", "traveler.calibration"]
+
+[tool.setuptools.package-data]
+traveler = ["data/*.csv"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

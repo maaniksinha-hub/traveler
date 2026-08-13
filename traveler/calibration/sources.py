@@ -13,6 +13,7 @@ codes and response bodies only after scrubbing.
 from __future__ import annotations
 
 import datetime as _dt
+import re
 import os
 import random
 import time
@@ -519,3 +520,156 @@ class GoogleFlightsSource:
         if isinstance(level, str):
             out["_level"] = level  # type: ignore[assignment]
         return out
+
+
+# --------------------------------------------------------------------------
+# fast-flights: free, keyless Google Flights access
+# --------------------------------------------------------------------------
+
+SOURCE_FASTFLIGHTS = "fast-flights"
+
+#: Numeric run inside a display price such as "INR 5,480" or "Rs. 8,999".
+_PRICE_PATTERN = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+@dataclass
+class FastFlightsSource:
+    """Google Flights via the ``fast-flights`` library. Free, no API key.
+
+    ``fast-flights`` reverse-engineers Google Flights' protobuf query
+    parameters, so it talks to Google directly with no vendor in between and
+    no metering. That makes it the only source here with genuinely zero
+    marginal cost, which matters because calibration wants thousands of
+    observations.
+
+    The trade-offs are real and worth stating plainly:
+
+    - **It is a scraper.** There is no contract and no SLA; Google can change
+      the encoding and break it. Pin the version and expect occasional
+      maintenance.
+    - **No price history.** ``price_insights`` is not exposed, so this cannot
+      do the one-call history harvest that :class:`GoogleFlightsSource`
+      can. Cold start therefore relies on the grid sweep alone.
+    - **Be polite.** Unmetered does not mean unlimited. Keep ``--max-calls``
+      modest and leave the built-in delay in place; hammering the endpoint
+      gets you blocked and is rude besides.
+
+    Install with ``pip install fast-flights``.
+    """
+
+    currency: str = "INR"
+    #: Seconds to wait between calls. Not a rate limit imposed on us -- a
+    #: courtesy, since nothing else throttles this source.
+    delay_seconds: float = 1.5
+    proxy: str | None = field(default=None, repr=False)
+    name: str = SOURCE_FASTFLIGHTS
+
+    def _api(self):
+        try:
+            from fast_flights import (  # type: ignore[import-not-found]
+                FlightQuery,
+                Passengers,
+                create_query,
+                get_flights,
+            )
+        except ImportError as exc:
+            raise FareSourceError(
+                "fast-flights is not installed. It is free and keyless:\n"
+                "    pip install fast-flights"
+            ) from exc
+        return FlightQuery, Passengers, create_query, get_flights
+
+    def search(self, origin: str, destination: str, depart: _dt.date,
+               ret: _dt.date | None = None, cabin: str = "economy",
+               adults: int = 1, limit: int = 5) -> list[FareObservation]:
+        FlightQuery, Passengers, create_query, get_flights = self._api()
+
+        legs = [FlightQuery(date=depart.isoformat(),
+                            from_airport=origin.upper(),
+                            to_airport=destination.upper())]
+        if ret:
+            legs.append(FlightQuery(date=ret.isoformat(),
+                                    from_airport=destination.upper(),
+                                    to_airport=origin.upper()))
+
+        query = create_query(
+            flights=legs,
+            seat=cabin.replace("_", "-"),
+            trip="round-trip" if ret else "one-way",
+            passengers=Passengers(adults=adults),
+            currency=self.currency,
+        )
+
+        try:
+            result = get_flights(query, proxy=self.proxy)
+        except Exception as exc:  # the library raises its own exception tree
+            raise FareSourceError(
+                f"fast-flights lookup failed for {origin}-{destination} "
+                f"{depart}: {type(exc).__name__}: {exc}"
+            ) from exc
+        finally:
+            # Courtesy delay, applied even on failure so a broken route does
+            # not turn into a tight retry loop against Google.
+            time.sleep(self.delay_seconds)
+
+        return self.parse_result(result, origin, destination, depart, ret,
+                                 cabin, self.currency, limit)
+
+    @staticmethod
+    def parse_result(result: Any, origin: str, destination: str,
+                     depart: _dt.date, ret: _dt.date | None, cabin: str,
+                     currency: str = "INR",
+                     limit: int = 5) -> list[FareObservation]:
+        """Normalise a fast-flights result. Pure, so fixtures can drive it.
+
+        Prices arrive as display strings such as ``"INR 5,480"`` or ``"₹5,480"``,
+        so anything non-numeric is stripped before parsing.
+        """
+        now = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
+
+        # ResultList subclasses list, so the itineraries are the result
+        # itself. Older releases wrapped them in a `.flights` attribute, so
+        # both shapes are accepted rather than silently yielding nothing.
+        if isinstance(result, (list, tuple)):
+            entries = list(result)
+        else:
+            entries = list(getattr(result, "flights", None) or [])
+
+        out: list[FareObservation] = []
+        for entry in entries:
+            value = _coerce_price(getattr(entry, "price", None))
+            if value is None:
+                continue
+            airlines = getattr(entry, "airlines", None) or []
+            carrier = airlines[0] if airlines else getattr(entry, "name", None)
+            out.append(FareObservation(
+                origin=origin.upper(), destination=destination.upper(),
+                depart_date=depart, return_date=ret, cabin=cabin,
+                price=value, currency=currency, observed_at=now,
+                carrier=carrier,
+                source=SOURCE_FASTFLIGHTS,
+            ))
+            if len(out) >= limit:
+                break
+        return out
+
+
+def _coerce_price(raw: Any) -> float | None:
+    """Pull a number out of whatever the scraper hands back."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw) if raw > 0 else None
+    if not isinstance(raw, str):
+        return None
+    # Match the numeric run only. Naive character filtering turns "Rs. 8999"
+    # into 0.8999, because the full stop in the currency prefix becomes a
+    # decimal point.
+    match = _PRICE_PATTERN.search(raw)
+    if match is None:
+        return None
+    try:
+        value = float(match.group(0).replace(",", ""))
+    except ValueError:
+        return None
+    return value if value > 0 else None
