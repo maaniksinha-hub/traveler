@@ -1,0 +1,166 @@
+<meta charset="UTF-8" />
+<title>Traveler</title>
+
+<div class="page">
+  <header class="masthead">
+    <h1>Traveler</h1>
+    <span class="mark">Fare strategy, not a booking engine</span>
+  </header>
+  <p class="subhead">
+    Tell it what you're trying to book. It ranks the tactics that actually
+    apply, prices the option of waiting, and works out the cheapest way to
+    pay &mdash; the same reasoning as the traveler CLI, running in your browser.
+  </p>
+
+  <form id="trip-form" novalidate>
+    <div class="section">
+      <div class="section-label">Trip</div>
+      <div class="field-row">
+        <div class="field combo">
+          <label for="origin-input">From</label>
+          <input type="text" id="origin-input" autocomplete="off" placeholder="City or airport code" required />
+          <div class="combo-list" id="origin-list"></div>
+        </div>
+        <div class="field combo">
+          <label for="dest-input">To</label>
+          <input type="text" id="dest-input" autocomplete="off" placeholder="City or airport code" required />
+          <div class="combo-list" id="dest-list"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="depart-input">Depart</label>
+          <input type="date" id="depart-input" required />
+        </div>
+        <div class="field">
+          <label for="return-input">Return <span class="hint" id="oneway-hint">&mdash; leave blank for one-way</span></label>
+          <input type="date" id="return-input" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Cabin</label>
+          <div class="segmented" id="cabin-control" role="group" aria-label="Cabin">
+            <button type="button" data-value="economy" aria-pressed="true">Economy</button>
+            <button type="button" data-value="premium_economy" aria-pressed="false">Prem. Eco</button>
+            <button type="button" data-value="business" aria-pressed="false">Business</button>
+            <button type="button" data-value="first" aria-pressed="false">First</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Passengers</label>
+          <div class="stepper">
+            <button type="button" id="pax-minus" aria-label="Fewer passengers">&minus;</button>
+            <output id="pax-value">1</output>
+            <button type="button" id="pax-plus" aria-label="More passengers">&plus;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Your situation</div>
+      <div class="chip-grid" id="flex-chips">
+        <button type="button" class="chip" data-flex="destinationFlex" aria-pressed="false">Could fly a different city</button>
+        <button type="button" class="chip" data-flex="originFlex" aria-pressed="false">Could fly from a different airport</button>
+        <button type="button" class="chip" data-flex="acceptsSelfTransfer" aria-pressed="false">OK with self-transfer / separate tickets</button>
+        <button type="button" class="chip" data-flex="canBookFast" aria-pressed="false">Can commit within a few hours</button>
+        <button type="button" class="chip warn" id="hard-dates-chip" data-flex="hardDates" aria-pressed="false">My dates are fixed</button>
+      </div>
+      <div class="flex-slider-row" id="flex-slider-row">
+        <label for="flex-days" style="min-width: 190px; font-size: 13px; color: var(--ink-soft);">Days my dates could shift</label>
+        <input type="range" id="flex-days" min="0" max="14" value="0" />
+        <span class="value num" id="flex-days-value">0</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Fare you've seen</div>
+      <div class="field-row">
+        <div class="field">
+          <label for="fare-input">Fare you've seen <span class="hint">&mdash; INR, whole party</span></label>
+          <input type="number" id="fare-input" class="num-field" min="0" step="1" placeholder="e.g. 9500" />
+        </div>
+        <div class="field">
+          <label for="baseline-input">Normal price for this route <span class="hint">&mdash; INR</span></label>
+          <input type="number" id="baseline-input" class="num-field" min="0" step="1" placeholder="e.g. 6000" />
+        </div>
+      </div>
+      <p class="hint" style="margin: 0;">
+        Both are optional. Fill them in and you get a trigger price and a
+        straight BUY / MARGINAL / HOLD verdict on the fare in hand.
+      </p>
+    </div>
+
+    <details class="accordion">
+      <summary>
+        <span>Wallet <span class="hint">&mdash; cards, points, fare categories (optional)</span></span>
+        <span class="chevron">&#8250;</span>
+      </summary>
+      <div class="accordion-body">
+        <div class="field">
+          <label>Cards</label>
+          <div class="chip-grid" id="card-chips"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="points-input">Points balance</label>
+            <input type="number" id="points-input" class="num-field" min="0" step="1" placeholder="0" />
+          </div>
+          <div class="field">
+            <label for="programmes-input">Loyalty programmes</label>
+            <input type="text" id="programmes-input" placeholder="KrisFlyer, Executive Club" />
+          </div>
+        </div>
+        <div class="chip-grid">
+          <button type="button" class="chip" data-cat="isStudent" aria-pressed="false">Student</button>
+          <button type="button" class="chip" data-cat="isSenior" aria-pressed="false">Senior citizen</button>
+          <button type="button" class="chip" data-cat="isArmedForces" aria-pressed="false">Armed forces</button>
+          <button type="button" class="chip" data-cat="nonIndianPassport" aria-pressed="false">Not an Indian passport</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="accordion" style="margin-top: 12px;">
+      <summary>
+        <span>Advanced <span class="hint">&mdash; market regime, buying abroad (optional)</span></span>
+        <span class="chevron">&#8250;</span>
+      </summary>
+      <div class="accordion-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="regime-input">Market regime</label>
+            <select id="regime-input">
+              <option value="rising" selected>Rising (2026 fuel-shock default)</option>
+              <option value="stable">Stable</option>
+              <option value="falling">Falling</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="decision-prob-input">Chance you actually take this trip</label>
+            <div class="flex-slider-row" style="margin-top: 4px;">
+              <input type="range" id="decision-prob-input" min="0" max="100" value="80" />
+              <span class="value num" id="decision-prob-value">80%</span>
+            </div>
+          </div>
+        </div>
+        <div class="chip-grid">
+          <button type="button" class="chip" id="foreign-pos-chip" aria-pressed="false">Buying from a foreign point of sale</button>
+        </div>
+      </div>
+    </details>
+
+    <div class="error-banner" id="error-banner"></div>
+
+    <div class="submit-row">
+      <button type="submit" class="btn-primary">Plan my trip</button>
+    </div>
+  </form>
+
+  <div id="results" aria-live="polite"></div>
+
+  <footer class="colophon">
+    Decision support, not a booking engine &mdash; it makes no bookings and holds no
+    credentials. Runs entirely in this browser; nothing you type leaves the page.
+  </footer>
+</div>

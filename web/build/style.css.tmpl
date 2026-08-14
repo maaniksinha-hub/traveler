@@ -1,0 +1,621 @@
+/* ==========================================================================
+   Design tokens
+   ==========================================================================
+   Grounding: this is a financial instrument for Indian air travel, not a
+   travel-blog page. Two authentic visual worlds, one per theme:
+     light = printed ticket / ledger stock
+     dark  = an airport departure board at night (a real second identity,
+             not an inverted first one -- boards genuinely are dark grounds
+             with saturated status colour)
+   Semantic verdict colour (go/caution/stop) is separate from the accent,
+   deliberately mirroring a real departure board's on-time/delayed/cancelled
+   palette, because the fare verdict IS a three-state status exactly like a
+   flight status. */
+
+:root {
+  --ground: #F4F5F8;
+  --surface: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --ink: #1A1D2B;
+  --ink-soft: #565C72;
+  --ink-faint: #8B90A3;
+  --line: #D8DBE6;
+  --line-strong: #B7BCD1;
+  --accent: #24346B;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E7EAF6;
+  --go: #1B7A4B;
+  --go-soft: #E3F2E9;
+  --caution: #9C6510;
+  --caution-soft: #FBEEDA;
+  --stop: #AE3A34;
+  --stop-soft: #F8E7E6;
+  --shadow: 0 1px 2px rgba(26,29,43,0.06), 0 8px 24px -12px rgba(26,29,43,0.18);
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0E1220;
+    --surface: #171B2C;
+    --surface-raised: #1D2237;
+    --ink: #E7E9F2;
+    --ink-soft: #A6ABC2;
+    --ink-faint: #6C7291;
+    --line: #2C3350;
+    --line-strong: #3C4568;
+    --accent: #8DA0F0;
+    --accent-ink: #0E1220;
+    --accent-soft: #232C4E;
+    --go: #3FBE7C;
+    --go-soft: #163826;
+    --caution: #E8A33D;
+    --caution-soft: #3D2E10;
+    --stop: #E2645C;
+    --stop-soft: #3B1E1C;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0E1220;
+  --surface: #171B2C;
+  --surface-raised: #1D2237;
+  --ink: #E7E9F2;
+  --ink-soft: #A6ABC2;
+  --ink-faint: #6C7291;
+  --line: #2C3350;
+  --line-strong: #3C4568;
+  --accent: #8DA0F0;
+  --accent-ink: #0E1220;
+  --accent-soft: #232C4E;
+  --go: #3FBE7C;
+  --go-soft: #163826;
+  --caution: #E8A33D;
+  --caution-soft: #3D2E10;
+  --stop: #E2645C;
+  --stop-soft: #3B1E1C;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6);
+}
+
+/* ==========================================================================
+   Type -- IBM Plex family, embedded (CSP blocks font CDNs). Serif carries
+   headings (official-document gravitas), Sans carries UI/body, Mono carries
+   every rupee figure, date and airport code -- ticket-stock, ledger-entry
+   character, and genuinely useful for column alignment.
+   ========================================================================== */
+
+@font-face {
+  font-family: "Plex Serif";
+  font-weight: 500;
+  src: url(data:font/woff2;base64,{{SERIF_MEDIUM}}) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Serif";
+  font-weight: 600;
+  src: url(data:font/woff2;base64,{{SERIF_SEMIBOLD}}) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Sans";
+  font-weight: 400;
+  src: url(data:font/woff2;base64,{{SANS_REGULAR}}) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Sans";
+  font-weight: 500;
+  src: url(data:font/woff2;base64,{{SANS_MEDIUM}}) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  font-weight: 400;
+  src: url(data:font/woff2;base64,{{MONO_REGULAR}}) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  font-weight: 500;
+  src: url(data:font/woff2;base64,{{MONO_MEDIUM}}) format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --font-display: "Plex Serif", Georgia, serif;
+  --font-body: "Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+
+html { color-scheme: light dark; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent-soft); color: var(--accent); }
+
+a { color: var(--accent); }
+
+button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Layout -- a single ticket-strip column. Proportion and the perforated
+   divider between "input" and "issued plan" are the one deliberate nod to
+   the boarding-pass world; everything else stays quiet.
+   ========================================================================== */
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px 96px;
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.masthead h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.masthead .mark {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.subhead {
+  color: var(--ink-soft);
+  max-width: 58ch;
+  margin: 0 0 40px;
+}
+
+.perforation {
+  border: none;
+  border-top: 1.5px dashed var(--line-strong);
+  margin: 40px 0;
+}
+
+/* ==========================================================================
+   Form sections
+   ========================================================================== */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.field .hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+input[type="text"], input[type="number"], input[type="date"], select {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  color: var(--ink);
+  transition: border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+}
+
+input:hover, select:hover { border-color: var(--line-strong); }
+
+input:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+input[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+input.num-field, .field input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Airport combobox */
+.combo { position: relative; }
+.combo-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow);
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  display: none;
+}
+.combo-list.open { display: block; }
+.combo-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.combo-item:hover, .combo-item.active { background: var(--accent-soft); }
+.combo-item .code { font-family: var(--font-mono); font-weight: 500; color: var(--accent); min-width: 34px; }
+.combo-item .city { color: var(--ink-soft); font-size: 13px; }
+
+/* Segmented control (cabin) */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  width: fit-content;
+}
+.segmented button {
+  background: var(--surface);
+  border: none;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-right: 1px solid var(--line);
+  transition: background 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.segmented button:last-child { border-right: none; }
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.segmented button:not([aria-pressed="true"]):hover { background: var(--accent-soft); }
+
+/* Stepper (pax) */
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: var(--radius-m); }
+.stepper button {
+  background: none; border: none; width: 32px; height: 34px; cursor: pointer;
+  color: var(--ink-soft); font-size: 16px; line-height: 1;
+}
+.stepper button:hover { color: var(--accent); }
+.stepper output { min-width: 24px; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Toggle chips */
+.chip-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out);
+  user-select: none;
+}
+.chip:hover { border-color: var(--line-strong); }
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.chip.warn[aria-pressed="true"] { background: var(--stop); border-color: var(--stop); color: #fff; }
+.chip[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.flex-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: opacity 150ms var(--ease-out);
+}
+.flex-slider-row.disabled { opacity: 0.4; pointer-events: none; }
+.flex-slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+.flex-slider-row .value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; min-width: 3.5ch; text-align: right; }
+
+/* Accordion (wallet) */
+.accordion {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  overflow: hidden;
+}
+.accordion summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.accordion summary::-webkit-details-marker { display: none; }
+.accordion summary .chevron { transition: transform 180ms var(--ease-out); color: var(--ink-faint); }
+.accordion[open] summary .chevron { transform: rotate(90deg); }
+.accordion .accordion-body {
+  padding: 4px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.submit-row { display: flex; justify-content: center; margin: 40px 0 8px; }
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: var(--radius-m);
+  padding: 14px 32px;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+}
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+
+.error-banner {
+  background: var(--stop-soft);
+  color: var(--stop);
+  border: 1px solid var(--stop);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  font-size: 13px;
+  display: none;
+}
+.error-banner.show { display: block; }
+
+/* ==========================================================================
+   Results -- a report, scanned not read. Summary first, detail after.
+   ========================================================================== */
+
+#results { display: none; }
+#results.show { display: block; }
+
+.provenance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 10px 14px;
+  margin-bottom: 24px;
+}
+.provenance .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--caution); flex-shrink: 0; }
+
+.result-block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 20px;
+  margin-bottom: 16px;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+}
+.result-block.reveal {
+  animation: block-in 360ms var(--ease-out) forwards;
+}
+@keyframes block-in {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.result-block h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.verdict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.verdict-badge.go { background: var(--go-soft); color: var(--go); }
+.verdict-badge.caution { background: var(--caution-soft); color: var(--caution); }
+.verdict-badge.stop { background: var(--stop-soft); color: var(--stop); }
+.verdict-badge.neutral { background: var(--accent-soft); color: var(--accent); }
+
+.trigger-line {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.trigger-line .price { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+
+.tactic {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.tactic:first-of-type { border-top: none; padding-top: 0; }
+.tactic-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.tactic-title { font-weight: 500; font-size: 13.5px; }
+.tactic-group {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+.tactic-saving { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--go); white-space: nowrap; }
+.tactic-detail { font-size: 13px; color: var(--ink-soft); margin: 0 0 6px; }
+.tactic-risks { margin: 0; padding-left: 18px; font-size: 12px; color: var(--ink-faint); }
+.tactic-risks li { margin-bottom: 2px; }
+
+.portfolio-line {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-strong);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.portfolio-line .amt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+
+.option-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.option-row:first-of-type { border-top: none; padding-top: 0; }
+.option-tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
+  height: fit-content;
+}
+.option-tag.buy { background: var(--go-soft); color: var(--go); }
+.option-tag.skip { background: var(--line); color: var(--ink-soft); }
+.option-body .instrument { font-weight: 500; font-size: 13.5px; margin-bottom: 2px; }
+.option-body .rationale { font-size: 12.5px; color: var(--ink-soft); }
+
+.ledger { display: flex; flex-direction: column; gap: 0; margin-top: 4px; }
+.ledger-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.ledger-row:first-child { border-top: none; }
+.ledger-row .label { color: var(--ink-soft); }
+.ledger-row .label .unit { display: block; font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+.ledger-row .amt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.ledger-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-style: normal;
+}
+.ledger-disclaimer {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  border-top: 1px dashed var(--line-strong);
+  padding-top: 10px;
+}
+
+.plain-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 8px; }
+.plain-list li::marker { color: var(--ink-faint); }
+
+.steps-list { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink-faint); }
+
+footer.colophon {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line-strong);
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+/* ==========================================================================
+   Motion hygiene
+   ========================================================================== */
+
+@media (hover: hover) and (pointer: fine) {
+  .tactic:hover .tactic-title { color: var(--accent); }
+  .result-block:hover { border-color: var(--line-strong); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-block, .result-block.reveal { animation: none !important; opacity: 1 !important; transform: none !important; }
+  * { transition-duration: 0.001ms !important; }
+}
