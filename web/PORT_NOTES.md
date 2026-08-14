@@ -1,8 +1,24 @@
 # Port notes
 
+> **Read this first.** There are now two web front ends, and only one of them
+> has a port to keep in sync.
+>
+> | | `web/app/` (primary) | `web/traveler.html` (legacy) |
+> |---|---|---|
+> | Runs the engine | real Python, in process | JavaScript port |
+> | Needs a server | yes, `python3 -m traveler.serve` | no, single file |
+> | Live flight prices | yes, via `fast-flights` | no |
+> | Drifts from `traveler/*.py` | **never** | yes, see below |
+>
+> `web/app/` calls the Python engine over HTTP, so it inherits every future
+> change automatically and none of the sync burden below applies to it. The
+> file-per-page Artifact is kept because a single self-contained HTML file is
+> still the easiest thing to hand to somebody, but new work belongs in
+> `web/app/`.
+
 `web/traveler.html` is a **hand-synced parallel implementation** of the
 Python `traveler` engine, built because a published Artifact runs in a
-browser sandbox and cannot execute Python. It is not a live wrapper — it
+browser sandbox and cannot execute Python. It is not a live wrapper. It
 will not pick up future changes to `traveler/*.py` automatically. Re-sync it
 by diffing this file against the Python source below, section by section.
 

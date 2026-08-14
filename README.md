@@ -21,10 +21,39 @@ python3 -m traveler --from BLR --to LHR \
 Add `--json` for machine-readable output.
 
 ```bash
-python3 -m pytest tests/ -q          # 218 tests
+python3 -m pytest tests/ -q          # 244 tests
 pip install -e ".[free]"             # fast-flights: free, keyless fare data
 pip install -e ".[calibrate]"        # numpy/scipy/requests, calibration only
 ```
+
+### The web app
+
+For anyone who does not want a CLI with thirty flags:
+
+```bash
+pip install -e ".[free]"             # needed for live flight prices
+python3 -m traveler.serve            # then open http://127.0.0.1:8765
+```
+
+Three fields on the first screen. It answers three questions: which flights
+are cheapest right now, what else would make the trip cheaper, and whether a
+different date is better. Everything the CLI prints is still there, one tap
+in, in plain language.
+
+The server is standard library only, binds to loopback, and calls the real
+engine in-process. There is no second implementation of the pricing logic to
+keep in sync.
+
+**Live prices come from `fast-flights`, which is a scraper.** It is free and
+needs no key, but it has no contract and no SLA, and it will break when
+Google changes its page. The app degrades to the modelled target price and
+says so rather than showing anything invented. Without `[free]` installed,
+every other part of the page still works.
+
+There is also `web/traveler.html`, a self-contained page that runs a
+JavaScript port of the engine with no server and no live prices. It predates
+the web app and is kept for sharing as a single file. See
+`web/PORT_NOTES.md`.
 
 ---
 

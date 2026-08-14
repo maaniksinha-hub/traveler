@@ -26,6 +26,7 @@ dev = ["pytest>=7"]
 
 [project.scripts]
 traveler = "traveler.cli:main"
+traveler-serve = "traveler.serve:main"
 traveler-snapshot = "traveler.calibration.snapshot:main"
 traveler-backtest = "traveler.calibration.backtest:main"
 traveler-fit = "traveler.calibration.fit:main"

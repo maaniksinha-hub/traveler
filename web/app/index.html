@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Traveler</title>
+<link rel="stylesheet" href="/app.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>✈</text></svg>" />
+</head>
+<body>
+
+<header class="topbar">
+  <span class="wordmark">Traveler</span>
+  <button type="button" id="theme-toggle" class="icon-btn" aria-label="Switch between light and dark">
+    <span aria-hidden="true" id="theme-icon">◐</span>
+  </button>
+</header>
+
+<main class="shell">
+
+  <section class="ask" id="ask">
+    <h1>Find a cheaper flight.</h1>
+    <p class="lede">Tell us where you are going. We will tell you what a fair
+      price looks like, how to pay less, and whether a different day is cheaper.</p>
+
+    <form id="trip-form" novalidate>
+      <div class="fields">
+        <div class="field combo">
+          <label for="origin-input">From</label>
+          <input type="text" id="origin-input" autocomplete="off" spellcheck="false"
+                 placeholder="Delhi" required aria-describedby="origin-list" />
+          <div class="combo-list" id="origin-list" role="listbox" aria-label="Matching airports"></div>
+        </div>
+
+        <button type="button" id="swap" class="swap" aria-label="Swap origin and destination">
+          <span aria-hidden="true">⇄</span>
+        </button>
+
+        <div class="field combo">
+          <label for="dest-input">To</label>
+          <input type="text" id="dest-input" autocomplete="off" spellcheck="false"
+                 placeholder="Mumbai" required aria-describedby="dest-list" />
+          <div class="combo-list" id="dest-list" role="listbox" aria-label="Matching airports"></div>
+        </div>
+
+        <div class="field">
+          <label for="depart-input">Leaving</label>
+          <input type="date" id="depart-input" required />
+        </div>
+
+        <div class="field">
+          <label for="return-input">Coming back <span class="opt">optional</span></label>
+          <input type="date" id="return-input" />
+        </div>
+      </div>
+
+      <details class="more">
+        <summary>
+          <span class="more-label">Who is travelling</span>
+          <span class="more-value" id="who-summary">1 adult, economy</span>
+          <span class="chev" aria-hidden="true">›</span>
+        </summary>
+        <div class="more-body">
+          <div class="row">
+            <span class="row-label">Travellers</span>
+            <div class="stepper">
+              <button type="button" id="pax-minus" aria-label="Fewer travellers">&minus;</button>
+              <output id="pax-value" aria-live="polite">1</output>
+              <button type="button" id="pax-plus" aria-label="More travellers">&plus;</button>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label">Class</span>
+            <div class="segmented" id="cabin-control" role="group" aria-label="Cabin class">
+              <button type="button" data-value="economy" aria-pressed="true">Economy</button>
+              <button type="button" data-value="premium_economy" aria-pressed="false">Premium</button>
+              <button type="button" data-value="business" aria-pressed="false">Business</button>
+              <button type="button" data-value="first" aria-pressed="false">First</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="more">
+        <summary>
+          <span class="more-label">How flexible are you</span>
+          <span class="more-value" id="flex-summary">Not set</span>
+          <span class="chev" aria-hidden="true">›</span>
+        </summary>
+        <div class="more-body">
+          <p class="hint">The more you can bend, the more ways there are to save.</p>
+          <div class="chips" id="flex-chips">
+            <button type="button" class="chip" data-flex="destinationFlex" aria-pressed="false">A nearby city works too</button>
+            <button type="button" class="chip" data-flex="originFlex" aria-pressed="false">I can leave from another airport</button>
+            <button type="button" class="chip" data-flex="acceptsSelfTransfer" aria-pressed="false">I can book two separate tickets</button>
+            <button type="button" class="chip" data-flex="canBookFast" aria-pressed="false">I can decide within hours</button>
+          </div>
+          <div class="row" id="flex-slider-row">
+            <span class="row-label">My dates could move by</span>
+            <input type="range" id="flex-days" min="0" max="14" value="0" aria-describedby="flex-days-value" />
+            <span class="num" id="flex-days-value">Not at all</span>
+          </div>
+          <div class="chips">
+            <button type="button" class="chip" id="hard-dates-chip" data-flex="hardDates" aria-pressed="false">My dates cannot change</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="more">
+        <summary>
+          <span class="more-label">Cards and discounts</span>
+          <span class="more-value" id="wallet-summary">None added</span>
+          <span class="chev" aria-hidden="true">›</span>
+        </summary>
+        <div class="more-body">
+          <p class="hint">Adding a card lets us work out the cheapest way to pay.</p>
+          <div class="chips" id="card-chips"></div>
+          <div class="row">
+            <span class="row-label">Reward points you have</span>
+            <input type="number" id="points-input" class="num-field" min="0" step="1" placeholder="0" />
+          </div>
+          <div class="row">
+            <span class="row-label">Airline programmes</span>
+            <input type="text" id="programmes-input" placeholder="KrisFlyer, Executive Club" />
+          </div>
+          <p class="hint">Do any of these apply to you?</p>
+          <div class="chips">
+            <button type="button" class="chip" data-cat="is_student" aria-pressed="false">Student</button>
+            <button type="button" class="chip" data-cat="is_senior" aria-pressed="false">Senior citizen</button>
+            <button type="button" class="chip" data-cat="is_armed_forces" aria-pressed="false">Armed forces</button>
+            <button type="button" class="chip" data-cat="non_indian_passport" aria-pressed="false">Not an Indian passport</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="more">
+        <summary>
+          <span class="more-label">Seen a price already</span>
+          <span class="more-value" id="fare-summary">Not yet</span>
+          <span class="chev" aria-hidden="true">›</span>
+        </summary>
+        <div class="more-body">
+          <p class="hint">If you have a price in mind we will tell you straight
+            whether it is worth taking.</p>
+          <div class="row">
+            <span class="row-label">Price you found</span>
+            <input type="number" id="fare-input" class="num-field" min="0" step="1" placeholder="₹ total for everyone" />
+          </div>
+          <div class="row">
+            <span class="row-label">What it usually costs</span>
+            <input type="number" id="baseline-input" class="num-field" min="0" step="1" placeholder="₹ if you know" />
+          </div>
+        </div>
+      </details>
+
+      <p class="error" id="error-banner" role="alert" hidden></p>
+
+      <button type="submit" class="go" id="go">
+        <span class="go-text" id="go-text">Find me a good price</span>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+      <p class="working" id="working" hidden aria-live="polite">Checking live flight prices. This takes a few seconds.</p>
+    </form>
+  </section>
+
+  <section id="results" hidden aria-live="polite"></section>
+
+</main>
+
+<footer class="foot">
+  <p>Traveler helps you decide. It does not book anything and never sees your
+    card details.</p>
+</footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
