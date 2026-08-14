@@ -20,7 +20,7 @@ Source parts, combined in this order:
 |---|---|
 | `web/build/body.html` | markup, `<meta charset>`, `<title>` |
 | `web/build/style.css.tmpl` | design tokens + components, `{{FONT}}` placeholders |
-| `web/fonts/*.b64` | IBM Plex Serif/Sans/Mono, base64, substituted into the CSS |
+| `web/fonts/*.b64` | Geist + Geist Mono, base64, substituted into the CSS |
 | `web/traveler.mjs` | the ported decision engine (import line stripped; `AIRPORTS_RAW` inlined from `web/data/airports-data.mjs` instead of imported) |
 | `web/build/app-ui.js` | form handling + results rendering |
 
@@ -32,8 +32,22 @@ python3 -m traveler.airports --refresh   # updates traveler/data/airports.csv
 # (see the one-liner in its own header comment)
 ```
 
-Font files came from `raw.githubusercontent.com/IBM/plex` (SIL OFL), fetched
-once and committed as `.woff2` + `.b64` under `web/fonts/`.
+Font files came from `raw.githubusercontent.com/vercel/geist-font` (SIL OFL),
+fetched once and committed as `.woff2` + `.b64` under `web/fonts/`.
+
+### Taste-skill compliance correction
+
+The first published version of this page used IBM Plex Serif as the default
+display font and em-dashes throughout the authored copy (`body.html`,
+`app-ui.js`). Both are flagged directly by `Leonxlnx/taste-skill`'s own
+`SKILL.md` — serif-as-default is called out as "the single most-tested AI
+tell in production rounds," and em-dash usage as "the single most-violated
+Tell." Neither rule was actually applied to the first version because the
+skill file itself hadn't been fetched, only a README paraphrase. Corrected
+by switching to Geist + Geist Mono (a pairing the skill explicitly endorses)
+and rewriting every em-dash in the UI copy as a period, colon, comma, or
+plain hyphen. The ported engine's own generated strings (`traveler.mjs`)
+already used ASCII `--` rather than em-dash characters and needed no change.
 
 ## Module mapping
 

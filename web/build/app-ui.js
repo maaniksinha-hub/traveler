@@ -31,10 +31,10 @@ function wireCombo(inputId, listId) {
     for (const a of matches) {
       const item = document.createElement("div");
       item.className = "combo-item";
-      item.innerHTML = `<span class="code">${a.iata}</span><span class="city">${a.city || "—"}, ${a.country}</span>`;
+      item.innerHTML = `<span class="code">${a.iata}</span><span class="city">${a.city || "-"}, ${a.country}</span>`;
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
-        input.value = `${a.iata} — ${a.city || a.iata}`;
+        input.value = `${a.iata} - ${a.city || a.iata}`;
         selectedCode = a.iata;
         list.classList.remove("open");
       });
@@ -55,7 +55,7 @@ function wireCombo(inputId, listId) {
       if (selectedCode) return selectedCode;
       const raw = input.value.trim().toUpperCase();
       // Power-user path: typed a bare 3-letter code without picking from the list.
-      const bare = raw.split(/[\s—-]/)[0];
+      const bare = raw.split(/[\s-]/)[0];
       return bare;
     },
   };
@@ -203,7 +203,7 @@ function renderResults(plan, fare) {
   root.appendChild(el(`
     <div class="provenance">
       <span class="dot"></span>
-      <span>Uncalibrated priors &mdash; rankings are more reliable than the rupee figures. ${MODEL_PROVENANCE}</span>
+      <span>Uncalibrated priors. Rankings are more reliable than the rupee figures. ${MODEL_PROVENANCE}</span>
     </div>
   `));
 
@@ -263,7 +263,7 @@ function renderResults(plan, fare) {
     if (portfolio) {
       tacticsBlock.appendChild(el(`
         <p class="portfolio-line">Combined realistic saving: <span class="amt">₹${estStr(portfolio)}</span>.
-        Tactics sharing an exclusivity group count only once &mdash; one ticket, one channel.</p>
+        Tactics sharing an exclusivity group count only once: one ticket, one channel.</p>
       `));
     }
   }
@@ -277,7 +277,7 @@ function renderResults(plan, fare) {
         <div class="option-row">
           <span class="option-tag ${o.recommended ? "buy" : "skip"}">${o.recommended ? "Buy" : "Skip"}</span>
           <div class="option-body">
-            <div class="instrument">${o.instrument} <span class="num" style="color:var(--ink-faint);font-weight:400;">&mdash; ₹${fmt(o.costInr)}</span></div>
+            <div class="instrument">${o.instrument} <span class="num" style="color:var(--ink-faint);font-weight:400;">- ₹${fmt(o.costInr)}</span></div>
             <div class="rationale">${o.rationale}</div>
           </div>
         </div>
@@ -289,7 +289,7 @@ function renderResults(plan, fare) {
   // --- Payment --------------------------------------------------------
   if (plan.payment) {
     const pay = plan.payment;
-    const payBlock = el(`<div class="result-block"><h2>Payment &mdash; ${pay.channel.replace("_", " ")}</h2></div>`);
+    const payBlock = el(`<div class="result-block"><h2>Payment: ${pay.channel.replace("_", " ")}</h2></div>`);
     if (pay.steps.length) {
       const ul = document.createElement("ul");
       ul.className = "steps-list";
@@ -300,8 +300,8 @@ function renderResults(plan, fare) {
     payBlock.appendChild(el(`
       <div class="ledger">
         <div class="ledger-row"><span class="label">Cash off fare<span class="unit">money</span></span><span class="amt">₹${fmt(pay.cashOffInr)}</span></div>
-        <div class="ledger-row"><span class="label">Points earned<span class="unit">speculative &mdash; depends on redeeming well</span></span><span class="amt">₹${fmt(pay.pointsValueInr)}</span></div>
-        <div class="ledger-row"><span class="label">Option value<span class="unit">not money &mdash; the worth of keeping a choice</span></span><span class="amt">₹${fmt(netOption)}</span></div>
+        <div class="ledger-row"><span class="label">Points earned<span class="unit">speculative, depends on redeeming well</span></span><span class="amt">₹${fmt(pay.pointsValueInr)}</span></div>
+        <div class="ledger-row"><span class="label">Option value<span class="unit">not money, the worth of keeping a choice</span></span><span class="amt">₹${fmt(netOption)}</span></div>
       </div>
       <p class="ledger-disclaimer">These are deliberately not summed into one figure.</p>
     `));

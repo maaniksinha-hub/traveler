@@ -82,53 +82,51 @@
 }
 
 /* ==========================================================================
-   Type -- IBM Plex family, embedded (CSP blocks font CDNs). Serif carries
-   headings (official-document gravitas), Sans carries UI/body, Mono carries
-   every rupee figure, date and airport code -- ticket-stock, ledger-entry
-   character, and genuinely useful for column alignment.
+   Type -- Geist + Geist Mono, embedded (CSP blocks font CDNs). This is a
+   deliberate correction: the first build defaulted to a serif display face
+   for "document gravitas," which is exactly the excuse taste-skill calls
+   out by name as the single most-tested AI tell ("it feels premium/
+   editorial" is not a reason to reach for serif absent a real brand case).
+   Geist + Geist Mono is one of the skill's own named-good pairings -- one
+   coherent family, no serif anywhere. Mono still carries every rupee
+   figure, date and airport code; that reasoning didn't change.
    ========================================================================== */
 
 @font-face {
-  font-family: "Plex Serif";
-  font-weight: 500;
-  src: url(data:font/woff2;base64,{{SERIF_MEDIUM}}) format("woff2");
+  font-family: "Geist";
+  font-weight: 400;
+  src: url(data:font/woff2;base64,{{GEIST_REGULAR}}) format("woff2");
   font-display: swap;
 }
 @font-face {
-  font-family: "Plex Serif";
+  font-family: "Geist";
+  font-weight: 500;
+  src: url(data:font/woff2;base64,{{GEIST_MEDIUM}}) format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist";
   font-weight: 600;
-  src: url(data:font/woff2;base64,{{SERIF_SEMIBOLD}}) format("woff2");
+  src: url(data:font/woff2;base64,{{GEIST_SEMIBOLD}}) format("woff2");
   font-display: swap;
 }
 @font-face {
-  font-family: "Plex Sans";
+  font-family: "Geist Mono";
   font-weight: 400;
-  src: url(data:font/woff2;base64,{{SANS_REGULAR}}) format("woff2");
+  src: url(data:font/woff2;base64,{{GEIST_MONO_REGULAR}}) format("woff2");
   font-display: swap;
 }
 @font-face {
-  font-family: "Plex Sans";
+  font-family: "Geist Mono";
   font-weight: 500;
-  src: url(data:font/woff2;base64,{{SANS_MEDIUM}}) format("woff2");
-  font-display: swap;
-}
-@font-face {
-  font-family: "Plex Mono";
-  font-weight: 400;
-  src: url(data:font/woff2;base64,{{MONO_REGULAR}}) format("woff2");
-  font-display: swap;
-}
-@font-face {
-  font-family: "Plex Mono";
-  font-weight: 500;
-  src: url(data:font/woff2;base64,{{MONO_MEDIUM}}) format("woff2");
+  src: url(data:font/woff2;base64,{{GEIST_MONO_MEDIUM}}) format("woff2");
   font-display: swap;
 }
 
 :root {
-  --font-display: "Plex Serif", Georgia, serif;
-  --font-body: "Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --font-display: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
 }
 
 /* ==========================================================================

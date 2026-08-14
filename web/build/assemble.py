@@ -9,7 +9,7 @@ web/data/airports-data.mjs -- traveler.html is generated, not hand-edited.
 Parts combined, in order:
   1. web/build/body.html      -- markup + <meta charset> + <title>
   2. web/build/style.css.tmpl -- design tokens/components, {{FONT}} placeholders
-  3. web/fonts/*.b64          -- IBM Plex, base64, substituted into the CSS
+  3. web/fonts/*.b64          -- Geist + Geist Mono, base64, substituted into CSS
   4. web/traveler.mjs         -- the ported decision engine (import line
                                   stripped; AIRPORTS_RAW inlined from
                                   web/data/airports-data.mjs instead)
@@ -26,12 +26,11 @@ FONTS = ROOT / "fonts"
 def main() -> None:
     css = (BUILD / "style.css.tmpl").read_text()
     b64 = {
-        "SERIF_SEMIBOLD": (FONTS / "serif-semibold.b64").read_text().strip(),
-        "SERIF_MEDIUM": (FONTS / "serif-medium.b64").read_text().strip(),
-        "MONO_REGULAR": (FONTS / "mono-regular.b64").read_text().strip(),
-        "MONO_MEDIUM": (FONTS / "mono-medium.b64").read_text().strip(),
-        "SANS_REGULAR": (FONTS / "sans-regular.b64").read_text().strip(),
-        "SANS_MEDIUM": (FONTS / "sans-medium.b64").read_text().strip(),
+        "GEIST_REGULAR": (FONTS / "geist-regular.b64").read_text().strip(),
+        "GEIST_MEDIUM": (FONTS / "geist-medium.b64").read_text().strip(),
+        "GEIST_SEMIBOLD": (FONTS / "geist-semibold.b64").read_text().strip(),
+        "GEIST_MONO_REGULAR": (FONTS / "geist-mono-regular.b64").read_text().strip(),
+        "GEIST_MONO_MEDIUM": (FONTS / "geist-mono-medium.b64").read_text().strip(),
     }
     for key, val in b64.items():
         placeholder = "{{" + key + "}}"

@@ -9,7 +9,7 @@
   <p class="subhead">
     Tell it what you're trying to book. It ranks the tactics that actually
     apply, prices the option of waiting, and works out the cheapest way to
-    pay &mdash; the same reasoning as the traveler CLI, running in your browser.
+    pay. Same reasoning as the traveler CLI, running in your browser.
   </p>
 
   <form id="trip-form" novalidate>
@@ -33,7 +33,7 @@
           <input type="date" id="depart-input" required />
         </div>
         <div class="field">
-          <label for="return-input">Return <span class="hint" id="oneway-hint">&mdash; leave blank for one-way</span></label>
+          <label for="return-input">Return <span class="hint" id="oneway-hint">(leave blank for one-way)</span></label>
           <input type="date" id="return-input" />
         </div>
       </div>
@@ -78,11 +78,11 @@
       <div class="section-label">Fare you've seen</div>
       <div class="field-row">
         <div class="field">
-          <label for="fare-input">Fare you've seen <span class="hint">&mdash; INR, whole party</span></label>
+          <label for="fare-input">Fare you've seen <span class="hint">(INR, whole party)</span></label>
           <input type="number" id="fare-input" class="num-field" min="0" step="1" placeholder="e.g. 9500" />
         </div>
         <div class="field">
-          <label for="baseline-input">Normal price for this route <span class="hint">&mdash; INR</span></label>
+          <label for="baseline-input">Normal price for this route <span class="hint">(INR)</span></label>
           <input type="number" id="baseline-input" class="num-field" min="0" step="1" placeholder="e.g. 6000" />
         </div>
       </div>
@@ -94,7 +94,7 @@
 
     <details class="accordion">
       <summary>
-        <span>Wallet <span class="hint">&mdash; cards, points, fare categories (optional)</span></span>
+        <span>Wallet <span class="hint">(cards, points, fare categories, optional)</span></span>
         <span class="chevron">&#8250;</span>
       </summary>
       <div class="accordion-body">
@@ -123,7 +123,7 @@
 
     <details class="accordion" style="margin-top: 12px;">
       <summary>
-        <span>Advanced <span class="hint">&mdash; market regime, buying abroad (optional)</span></span>
+        <span>Advanced <span class="hint">(market regime, buying abroad, optional)</span></span>
         <span class="chevron">&#8250;</span>
       </summary>
       <div class="accordion-body">
@@ -160,7 +160,7 @@
   <div id="results" aria-live="polite"></div>
 
   <footer class="colophon">
-    Decision support, not a booking engine &mdash; it makes no bookings and holds no
+    Decision support, not a booking engine. It makes no bookings and holds no
     credentials. Runs entirely in this browser; nothing you type leaves the page.
   </footer>
 </div>
