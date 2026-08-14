@@ -15,7 +15,12 @@ dependencies = []
 # to fit the market model from observed fares.
 # Free, keyless fare source. Pinned loosely: it is a scraper and Google can
 # change the encoding, so expect occasional maintenance.
-free = ["fast-flights>=3.0"]
+#
+# typing_extensions is listed explicitly because fast-flights 3.0.2 imports
+# it without declaring it, so `pip install fast-flights` alone fails at
+# import with ModuleNotFoundError on a clean environment. Remove this once
+# upstream declares its own dependency.
+free = ["fast-flights>=3.0", "typing_extensions>=4.0"]
 calibrate = ["requests>=2.31", "numpy>=1.24", "scipy>=1.10"]
 dev = ["pytest>=7"]
 

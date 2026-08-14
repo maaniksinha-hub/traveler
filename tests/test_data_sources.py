@@ -715,3 +715,23 @@ def test_fastflights_needs_no_credentials(monkeypatch):
     for var in ("SEARCHAPI_API_KEY", "AMADEUS_CLIENT_ID", "AMADEUS_CLIENT_SECRET"):
         monkeypatch.delenv(var, raising=False)
     assert FastFlightsSource().name == "fast-flights"
+
+
+def test_fastflights_import_dependencies_are_all_declared():
+    """Regression: fast-flights 3.0.2 imports typing_extensions without
+    declaring it, so `pip install fast-flights` alone fails at import on a
+    clean environment. Our [free] extra pins it explicitly; this test fails
+    if that pin is ever dropped while the upstream gap persists.
+    """
+    pytest.importorskip("fast_flights")
+    import importlib.metadata as md
+
+    declared = " ".join(md.requires("fast-flights") or []).lower()
+    if "typing" in declared:
+        return  # upstream fixed it; the pin can go
+
+    pyproject = (Path(__file__).parent.parent / "pyproject.toml").read_text()
+    assert "typing_extensions" in pyproject, (
+        "fast-flights still does not declare typing_extensions, so the "
+        "[free] extra must keep pinning it"
+    )
